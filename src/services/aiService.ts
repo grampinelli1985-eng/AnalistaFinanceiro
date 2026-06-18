@@ -44,4 +44,6 @@ export async function sendMessage(
  */
 export const OPENING_MESSAGE = `Olá! Sou seu **Analista Financeiro Pessoal**. Meu papel aqui é te ajudar a entender e te mostrar exatamente onde sua situação financeira está e o que precisa mudar. E juntos construirmos o melhor caminho para uma vida financeira saudável.
 
+_Importante: sou uma ferramenta de organização e análise financeira, não um consultor de investimentos certificado nem um profissional de saúde mental. Para decisões de investimento específicas ou apoio emocional, recomendo sempre buscar um profissional qualificado._
+
 Antes de começarmos, qual é o seu nome?`;
