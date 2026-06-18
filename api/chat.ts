@@ -240,8 +240,18 @@ export default async function handler(req: Request) {
       }
     }
 
-    // Remove o bloco de dados da mensagem visível, mesmo se estiver truncado (faltando a tag de fechamento)
-    const cleanContent = rawContent.replace(/<financial_data>[\s\S]*/gi, '').trim();
+    // Remove o bloco <financial_data>...</financial_data> da mensagem visível.
+    // Usa replace com tag de abertura e fechamento pra não cortar conteúdo que
+    // vem DEPOIS do bloco. Se a tag de fechamento estiver ausente (resposta cortada),
+    // remove a partir da abertura até o final como fallback.
+    let cleanContent = rawContent
+      .replace(/<financial_data>[\s\S]*?<\/financial_data>/gi, '')
+      .trim();
+    
+    // Fallback: se ainda tiver <financial_data> sem fechamento, remove o resto
+    if (/<financial_data>/i.test(cleanContent)) {
+      cleanContent = cleanContent.replace(/<financial_data>[\s\S]*/gi, '').trim();
+    }
 
     return new Response(JSON.stringify({
       content: cleanContent,
