@@ -320,7 +320,7 @@ const App: React.FC = () => {
     }
   }, [handleLogout, showToast]);
 
-  // ── Enviar mensagem ao Claude ──────────────
+  // ── Enviar mensagem ao Gemini ──────────────
   const handleSendMessage = useCallback(async (content: string) => {
     if (isLoadingChat || !activeProfile) return;
 
@@ -346,10 +346,34 @@ const App: React.FC = () => {
       const allMessages = [...messages, userMessage];
       const response = await sendMessage(allMessages, financialData);
 
+      // Detecta resposta vazia ou incompleta — o modelo às vezes termina o turno
+      // sem gerar conteúdo visível (false completion). Nesse caso, enviamos uma
+      // mensagem interna pedindo continuação, sem expor isso ao usuário.
+      let finalContent = response.content;
+      if (!finalContent || finalContent.trim().length < 10) {
+        const followUpMessages = [...allMessages, {
+          id: generateId(),
+          role: 'assistant' as const,
+          content: '',
+          timestamp: new Date(),
+        }, {
+          id: generateId(),
+          role: 'user' as const,
+          content: 'Por favor, continue com o próximo passo da análise.',
+          timestamp: new Date(),
+        }];
+        const retryResponse = await sendMessage(followUpMessages, financialData);
+        finalContent = retryResponse.content || 'Desculpe, tive um problema ao gerar a resposta. Pode repetir sua última mensagem?';
+        // Aproveita dados financeiros do retry se existirem
+        if (!response.financialData && retryResponse.financialData) {
+          response.financialData = retryResponse.financialData;
+        }
+      }
+
       const assistantMessage: Message = {
         id: generateId(),
         role: 'assistant',
-        content: response.content,
+        content: finalContent,
         timestamp: new Date(),
       };
 
@@ -407,7 +431,7 @@ const App: React.FC = () => {
       const errorMessage: Message = {
         id: generateId(),
         role: 'assistant',
-        content: `⚠️ **Erro ao conectar com a API Claude.**\n\n${errMsg}\n\nSua chave de API pode estar incorreta, sem créditos ou com limites esgotados. Verifique no painel de configurações.`,
+        content: `⚠️ **Erro temporário ao processar sua mensagem.**\n\n${errMsg}\n\nIsso geralmente é passageiro — aguarde alguns segundos e tente enviar a mensagem novamente.`,
         timestamp: new Date(),
       };
       setMessages((prev) => {
@@ -439,62 +463,40 @@ const App: React.FC = () => {
 
   // ── Forçar Sincronização do Painel ────────
   const handleSyncData = useCallback(async () => {
-    if (isLoadingChat || !activeProfile) return;
-    setIsLoadingChat(true);
-    showToast('🔄 Sincronizando painel...');
-    try {
-      const syncMessage: Message = {
-        id: generateId(),
-        role: 'user',
-        content: '[SISTEMA] O usuário clicou em "Sincronizar Painel". Gere EXATAMENTE AGORA a tag <financial_data> completa e atualizada com base em toda a nossa conversa. Não escreva texto adicional, envie apenas o bloco JSON.',
-        timestamp: new Date(),
-      };
-      const response = await sendMessage([...messages, syncMessage], financialData);
-
-      if (response.financialData) {
-        try {
-          const parsedData: FinancialData = JSON.parse(response.financialData);
-          parsedData.lastUpdated = new Date().toISOString();
-
-          setFinancialData(parsedData);
-          const newBalance = calculateFinancialBalance(parsedData);
-          setBalance(newBalance);
-          await saveFinancialData(activeProfile.id, parsedData);
-
-          if (parsedData.userName && parsedData.userName !== activeProfile.name) {
-            const updatedProfile: Profile = { ...activeProfile, name: parsedData.userName };
-            await saveProfile(updatedProfile);
-            setActiveProfile(updatedProfile);
-            setProfiles(await loadProfiles());
-          }
-
-          const snapshot: MonthlySnapshot = {
-            month: getCurrentMonthKey(),
-            balance: newBalance,
-            financialData: parsedData,
-            notes: '',
-          };
-          await saveMonthlySnapshot(activeProfile.id, snapshot);
-          setSnapshots((prev) => {
-            const updated = prev.filter((s) => s.month !== snapshot.month);
-            return [...updated, snapshot];
-          });
-
-          showToast('✅ Painel sincronizado com sucesso!');
-        } catch (e) {
-          console.error(e);
-          showToast('❌ Erro interno ao sincronizar os dados.');
-        }
-      } else {
-        showToast('⚠️ O assistente não identificou mudanças financeiras.');
-      }
-    } catch (err: any) {
-      console.error(err);
-      showToast(`❌ Falha na sincronização: ${err.message}`);
-    } finally {
-      setIsLoadingChat(false);
+    if (!activeProfile || !financialData) {
+      showToast('⚠️ Sem dados financeiros para sincronizar.');
+      return;
     }
-  }, [isLoadingChat, activeProfile, messages, financialData, showToast]);
+    try {
+      showToast('🔄 Sincronizando painel...');
+
+      // Recalcula o balanço localmente — sem chamar a IA.
+      // Os dados financeiros já são atualizados automaticamente a cada
+      // mensagem do chat; esse botão serve apenas para forçar um recálculo
+      // caso o painel lateral tenha ficado desatualizado por algum motivo.
+      financialData.lastUpdated = new Date().toISOString();
+      const newBalance = calculateFinancialBalance(financialData);
+      setBalance(newBalance);
+      await saveFinancialData(activeProfile.id, financialData);
+
+      const snapshot: MonthlySnapshot = {
+        month: getCurrentMonthKey(),
+        balance: newBalance,
+        financialData,
+        notes: '',
+      };
+      await saveMonthlySnapshot(activeProfile.id, snapshot);
+      setSnapshots((prev) => {
+        const updated = prev.filter((s) => s.month !== snapshot.month);
+        return [...updated, snapshot];
+      });
+
+      showToast('✅ Painel sincronizado com sucesso!');
+    } catch (e) {
+      console.error(e);
+      showToast('❌ Erro ao sincronizar o painel.');
+    }
+  }, [activeProfile, financialData, showToast]);
 
   // ── Resetar Dados do Perfil Atual ─────────
   const handleResetProfileData = useCallback(async () => {
