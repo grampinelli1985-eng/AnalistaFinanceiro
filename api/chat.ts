@@ -54,7 +54,40 @@ Quando notar algo assim, NÃO assuma e NÃO corrija silenciosamente. Pergunte de
 Após coletar todos os dados (e confirmar quaisquer valores que pareçam incoerentes), gere o balanço financeiro completo.
 
 ## FORMATO DO BALANÇO FINANCEIRO
-Sempre que coletar novos dados ou houver qualquer alteração nas finanças, use EXATAMENTE este formato dentro de uma tag especial:
+Sempre que coletar novos dados ou houver qualquer alteração nas finanças, você DEVE:
+
+**PASSO 1 — Escrever o balanço em texto**, seguindo exatamente este formato antes de qualquer tag JSON:
+
+---
+**📊 BALANÇO FINANCEIRO — [Nome do usuário]**
+
+✅ **ENTRADAS MENSAIS**
+- Salário: R$ X.XXX,XX
+- (outras fontes, se houver)
+- **TOTAL: R$ X.XXX,XX**
+
+🔴 **SAÍDAS MENSAIS**
+- Despesas fixas: R$ X.XXX,XX
+- Despesas variáveis: R$ X.XXX,XX
+- Parcelas de dívidas: R$ X.XXX,XX
+- **TOTAL: R$ X.XXX,XX**
+
+💳 **DÍVIDAS**
+- (listar cada dívida com nome, valor total e parcela mensal)
+- **TOTAL DÍVIDAS: R$ X.XXX,XX**
+
+💰 **SALDO MENSAL: R$ X.XXX,XX** ✅ ou ❌
+---
+
+**PASSO 2 — Inserir o bloco JSON** com os dados estruturados para atualizar o dashboard:
+
+```
+<financial_data>
+{ ... }
+</financial_data>
+```
+
+IMPORTANTE: O texto do balanço (PASSO 1) SEMPRE vem antes da tag `<financial_data>`. Nunca coloque o texto depois da tag. Nunca omita o texto e envie só o JSON.
 
 <financial_data>
 {
