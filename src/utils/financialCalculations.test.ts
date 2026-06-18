@@ -88,7 +88,8 @@ describe('financialCalculations', () => {
       debts: [
         { id: 'd1', name: 'Cheque especial', type: 'other', totalAmount: 5000, monthlyPayment: 500, monthlyInterestRate: 8, remainingMonths: 10 }
       ],
-      savings: { currentAmount: 0, emergencyFundMonths: 0 }
+      savings: { currentAmount: 0, emergencyFundMonths: 0 },
+      lastUpdated: new Date().toISOString(),
     };
 
     const balance = calculateFinancialBalance(data);
@@ -98,5 +99,36 @@ describe('financialCalculations', () => {
     expect(balance.monthlyBalance).toBe(-2000);
     expect(balance.incomeCommitmentIndex).toBe(100);
     expect(balance.healthLevel).toBe('critical');
+  });
+
+  describe('calculateHealthLevel', () => {
+    it('returns critical when monthlyBalance is negative, regardless of other values', () => {
+      expect(calculateHealthLevel(-100, 1000, 5000, 20)).toBe('critical');
+    });
+
+    it('returns critical when commitmentIndex >= 90', () => {
+      expect(calculateHealthLevel(500, 1000, 5000, 90)).toBe('critical');
+    });
+
+    it('returns concerning when commitmentIndex >= 70 (but below 90)', () => {
+      expect(calculateHealthLevel(500, 1000, 5000, 75)).toBe('concerning');
+    });
+
+    it('returns concerning when totalDebts > totalIncome * 6', () => {
+      expect(calculateHealthLevel(500, 40000, 5000, 20)).toBe('concerning');
+    });
+
+    it('returns attention when commitmentIndex >= 50 (but below 70)', () => {
+      expect(calculateHealthLevel(500, 1000, 5000, 55)).toBe('attention');
+    });
+
+    it('returns attention when monthlyBalance is below 10% of income', () => {
+      // 5000 * 0.1 = 500; saldo de 400 fica abaixo disso
+      expect(calculateHealthLevel(400, 1000, 5000, 20)).toBe('attention');
+    });
+
+    it('returns healthy when balance is solid and commitment is low', () => {
+      expect(calculateHealthLevel(2000, 1000, 6000, 20)).toBe('healthy');
+    });
   });
 });

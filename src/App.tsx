@@ -16,6 +16,7 @@ import FamilyViewPanel from './components/FamilyViewPanel';
 import ProfileBadge from './components/ProfileBadge';
 import LandingPage from './components/LandingPage';
 import ConsentModal from './components/ConsentModal';
+import SettingsModal from './components/SettingsModal';
 
 // Serviços e Lib
 import { supabase } from './lib/supabase';
@@ -75,6 +76,7 @@ const App: React.FC = () => {
   const [activeProfile, setActiveProfile] = useState<Profile | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   // ── Estado do Chat (por perfil) ───────────
   const [messages, setMessages] = useState<Message[]>([]);
@@ -152,6 +154,7 @@ const App: React.FC = () => {
     hasInitializedRef.current = true;
 
     setIsInitializing(true);
+    let consented = false;
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -816,6 +819,21 @@ const App: React.FC = () => {
         />
       )}
 
+      {/* Modal de Configurações (Visão Familiar + Privacidade/LGPD) */}
+      {showSettingsModal && (
+        <SettingsModal
+          profiles={profiles}
+          onUpdateProfile={async (profile) => {
+            await saveProfile(profile);
+            const updatedProfiles = await loadProfiles();
+            setProfiles(updatedProfiles);
+          }}
+          onClose={() => setShowSettingsModal(false)}
+          onExportData={handleExportUserData}
+          onDeleteAccountAndData={handleDeleteAccountAndData}
+        />
+      )}
+
       {/* Visão Familiar */}
       {appView === 'family-view' && (
         <FamilyViewPanel
@@ -867,6 +885,28 @@ const App: React.FC = () => {
                   Nuvem Supabase
                 </span>
               )}
+
+              {/* Botão de Configurações */}
+              <button
+                onClick={() => setShowSettingsModal(true)}
+                style={{
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: 'var(--radius-full)',
+                  width: 36,
+                  height: 36,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  marginRight: 8,
+                }}
+                aria-label="Abrir configurações"
+                title="Configurações"
+              >
+                ⚙️
+              </button>
 
               {/* Badge do perfil ativo */}
               <ProfileBadge profile={activeProfile} onClick={handleSwitchProfile} />

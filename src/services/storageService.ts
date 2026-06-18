@@ -13,9 +13,6 @@ import type {
   FamilyViewConfig,
 } from '../types/financial';
 
-const PROFILES_STORAGE = 'analista_financeiro_profiles';
-const ACTIVE_PROFILE_STORAGE = 'analista_financeiro_active_profile';
-
 // ── Obter Sessão Atual ────────────────────
 async function getUserId(): Promise<string | null> {
   const { data: { session } } = await supabase.auth.getSession();
@@ -296,7 +293,6 @@ export async function clearProfileData(profileId: string): Promise<void> {
 export async function signOut(): Promise<void> {
   await supabase.auth.signOut();
   localStorage.removeItem(ACTIVE_PROFILE_KEY);
-  localStorage.removeItem(API_KEY_STORAGE);
 }
 
 // ── Migração de Dados Locais para Nuvem ──────

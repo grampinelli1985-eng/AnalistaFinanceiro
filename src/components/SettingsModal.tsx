@@ -3,12 +3,9 @@
 // ==========================================
 
 import React, { useState, useCallback } from 'react';
-import { validateApiKey } from '../services/aiService';
 import type { Profile } from '../types/financial';
 
 interface SettingsModalProps {
-  onConfirmApiKey: (apiKey: string) => void;
-  existingKey?: string;
   profiles: Profile[];
   onUpdateProfile: (profile: Profile) => Promise<void>;
   onClose: () => void;
@@ -16,23 +13,16 @@ interface SettingsModalProps {
   onDeleteAccountAndData: () => Promise<void>;
 }
 
-type SettingsTab = 'api' | 'sharing' | 'privacy';
+type SettingsTab = 'sharing' | 'privacy';
 
 const SettingsModal: React.FC<SettingsModalProps> = ({
-  onConfirmApiKey,
-  existingKey,
   profiles,
   onUpdateProfile,
   onClose,
   onExportData,
   onDeleteAccountAndData,
 }) => {
-  const [activeTab, setActiveTab] = useState<SettingsTab>('api');
-  
-  // API Key States
-  const [apiKey, setApiKey] = useState(existingKey || '');
-  const [isValidating, setIsValidating] = useState(false);
-  const [apiError, setApiError] = useState('');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('sharing');
 
   // Estados locais LGPD
   const [isExporting, setIsExporting] = useState(false);
@@ -41,31 +31,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
   // Toggles Saving State (Id -> Loading)
   const [updatingProfileIds, setUpdatingProfileIds] = useState<Record<string, boolean>>({});
-
-  const handleApiKeySubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = apiKey.trim();
-    if (!trimmed) {
-      setApiError('Por favor, insira sua chave da API Gemini.');
-      return;
-    }
-
-    setIsValidating(true);
-    setApiError('');
-
-    try {
-      const isValid = await validateApiKey(trimmed);
-      if (isValid) {
-        onConfirmApiKey(trimmed);
-      } else {
-        setApiError('Chave inválida ou sem permissão. Verifique e tente novamente.');
-      }
-    } catch {
-      setApiError('Erro ao validar a chave. Verifique sua conexão.');
-    } finally {
-      setIsValidating(false);
-    }
-  };
 
   const handleToggleFamilyView = useCallback(async (profile: Profile) => {
     setUpdatingProfileIds((prev) => ({ ...prev, [profile.id]: true }));
@@ -102,14 +67,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* Abas */}
         <div className="settings-tabs" role="tablist">
           <button
-            className={`settings-tab ${activeTab === 'api' ? 'active' : ''}`}
-            onClick={() => setActiveTab('api')}
-            role="tab"
-            aria-selected={activeTab === 'api'}
-          >
-            🔑 API Gemini
-          </button>
-          <button
             className={`settings-tab ${activeTab === 'sharing' ? 'active' : ''}`}
             onClick={() => setActiveTab('sharing')}
             role="tab"
@@ -129,102 +86,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Conteúdo */}
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 220 }}>
-          
-          {/* ── ABA 1: API KEY ── */}
-          {activeTab === 'api' && (
-            <form onSubmit={handleApiKeySubmit} style={{ marginTop: '8px' }}>
-              <p className="modal-description" style={{ fontSize: '0.85rem', marginBottom: '16px' }}>
-                A inteligência da aplicação é alimentada pela API do Google Gemini.
-                Sua chave fica segura apenas no seu navegador e não passa por servidores intermediários.
-              </p>
 
-              <div style={{ marginBottom: '16px' }}>
-                <label htmlFor="settings-api-key" className="modal-label">
-                  Chave da API Gemini
-                </label>
-                <input
-                  id="settings-api-key"
-                  type="password"
-                  className="modal-input"
-                  placeholder="AIzaSy..."
-                  value={apiKey}
-                  onChange={(e) => {
-                    setApiKey(e.target.value);
-                    setApiError('');
-                  }}
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-                
-                {apiError && (
-                  <p className="modal-error" role="alert" style={{ marginTop: '8px' }}>
-                    ⚠️ {apiError}
-                  </p>
-                )}
-              </div>
-
-              <div
-                style={{
-                  marginTop: '12px',
-                  padding: '12px',
-                  background: 'rgba(99, 102, 241, 0.08)',
-                  borderRadius: '8px',
-                  fontSize: '0.8125rem',
-                  color: 'var(--color-text-secondary)',
-                  lineHeight: '1.5',
-                  marginBottom: '16px'
-                }}
-              >
-                <strong style={{ color: 'var(--color-text-accent)' }}>Como obter sua chave:</strong>
-                <br />
-                1. Acesse{' '}
-                <a
-                  href="https://aistudio.google.com/app/apikey"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: 'var(--color-accent-hover)', textDecoration: 'underline' }}
-                >
-                  aistudio.google.com/app/apikey
-                </a>
-                <br />
-                2. Faça login ou crie uma conta
-                <br />
-                3. Vá em "API Keys" e crie uma nova chave
-              </div>
-
-              <div
-                style={{
-                  padding: '10px 12px',
-                  background: 'rgba(99, 102, 241, 0.06)',
-                  border: '1px solid var(--color-border)',
-                  borderRadius: '8px',
-                  fontSize: '0.75rem',
-                  color: 'var(--color-text-secondary)',
-                  lineHeight: '1.5',
-                  marginBottom: '20px'
-                }}
-              >
-                🔒 <strong>Segurança:</strong> Armazenada exclusivamente no seu localStorage.
-              </div>
-
-              <button
-                type="submit"
-                className="btn btn-primary w-full"
-                disabled={isValidating || apiKey.trim() === (existingKey || '')}
-              >
-                {isValidating ? (
-                  <>
-                    <span className="spinner" style={{ width: 14, height: 14 }} />
-                    Validando chave...
-                  </>
-                ) : (
-                  'Salvar Alterações'
-                )}
-              </button>
-            </form>
-          )}
-
-          {/* ── ABA 2: COMPARTILHAMENTO / PERFIS ── */}
+          {/* ── ABA 1: COMPARTILHAMENTO / PERFIS ── */}
           {activeTab === 'sharing' && (
             <div style={{ marginTop: '8px' }}>
               <p className="modal-description" style={{ fontSize: '0.85rem', marginBottom: '16px' }}>
@@ -278,7 +141,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           )}
 
-          {/* ── ABA 3: PRIVACIDADE & DADOS (LGPD) ── */}
+          {/* ── ABA 2: PRIVACIDADE & DADOS (LGPD) ── */}
           {activeTab === 'privacy' && (
             <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
