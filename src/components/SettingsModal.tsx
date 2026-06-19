@@ -27,6 +27,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   // Estados locais LGPD
   const [isExporting, setIsExporting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [confirmedIrreversible, setConfirmedIrreversible] = useState(false);
 
 
   // Toggles Saving State (Id -> Loading)
@@ -199,6 +200,34 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 <p className="modal-description" style={{ fontSize: '0.75rem', marginBottom: '8px' }}>
                   Exclui permanentemente todos os perfis, chats e snapshots. Esta ação é <strong>irreversível</strong>.
                 </p>
+
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '8px',
+                    marginBottom: '12px',
+                    padding: '10px',
+                    background: 'rgba(239, 68, 68, 0.06)',
+                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                    borderRadius: 'var(--radius-lg)',
+                    cursor: 'pointer',
+                    fontSize: '0.75rem',
+                    lineHeight: '1.4',
+                    color: 'var(--color-text-secondary)',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={confirmedIrreversible}
+                    onChange={(e) => setConfirmedIrreversible(e.target.checked)}
+                    style={{ marginTop: '2px', cursor: 'pointer', accentColor: 'var(--color-critical)' }}
+                  />
+                  <span>
+                    Eu entendo que essa ação é <strong>irreversível</strong> e os dados não poderão ser recuperados.
+                  </span>
+                </label>
+
                 <button
                   type="button"
                   className="btn btn-sm w-full"
@@ -209,20 +238,24 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                     padding: '8px',
                     fontSize: '0.78rem',
                     fontWeight: '600',
-                    cursor: 'pointer',
+                    cursor: confirmedIrreversible ? 'pointer' : 'not-allowed',
+                    opacity: confirmedIrreversible ? 1 : 0.5,
                     borderRadius: 'var(--radius-lg)'
                   }}
                   onClick={async () => {
+                    if (!confirmedIrreversible) return;
                     if (window.confirm('AVISO CRÍTICO: Tem certeza que deseja excluir permanentemente todos os seus dados e perfis? Essa ação NÃO pode ser desfeita.')) {
                       setIsDeleting(true);
                       try {
                         await onDeleteAccountAndData();
                       } finally {
                         setIsDeleting(false);
+                        setConfirmedIrreversible(false);
                       }
                     }
                   }}
-                  disabled={isDeleting}
+                  disabled={isDeleting || !confirmedIrreversible}
+                  aria-disabled={!confirmedIrreversible}
                 >
                   {isDeleting ? <span className="spinner" style={{ width: 14, height: 14 }} /> : '🗑️'} Excluir Minha Conta e Todos os Dados
                 </button>
