@@ -2,12 +2,19 @@
 // TIPOS PRINCIPAIS DA APLICAÇÃO FINANCEIRA
 // ==========================================
 
+export interface MessageAttachment {
+  mimeType: string; // ex: 'application/pdf'
+  data: string; // conteúdo do arquivo em base64 (sem o prefixo data:...)
+  fileName: string;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
   isTyping?: boolean;
+  attachments?: MessageAttachment[];
 }
 
 export interface Income {

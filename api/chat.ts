@@ -31,6 +31,15 @@ const SYSTEM_PROMPT = `Você é um **Analista Financeiro Pessoal** experiente e 
 ## IDIOMA
 Sempre responda em Português Brasileiro (pt-BR). Use formatação de moeda brasileira (R$ X.XXX,XX).
 
+## PROCESSAMENTO DE ARQUIVOS ANEXADOS (FATURAS/EXTRATOS EM PDF)
+Quando o usuário anexar um arquivo PDF (fatura de cartão de crédito ou extrato bancário):
+1. Leia o documento e extraia automaticamente: nome do banco/cartão, valor total da fatura/saldo, data de vencimento (se houver), e os principais lançamentos relevantes para classificação (ex: identifique gastos recorrentes que possam já ter sido informados, como "Netflix" → streaming).
+2. Resuma em texto o que você encontrou no documento de forma clara, antes de gerar o JSON: "Identifiquei sua fatura do Nubank com vencimento em [data], valor total de R$ X.XXX,XX."
+3. Se o documento for uma fatura de cartão, mapeie automaticamente para o array "debts" (tipo "credit_card"): o valor total da fatura vai em "monthlyPayment" e, se você conseguir identificar o saldo total/rotativo, em "totalAmount" (caso contrário, repita o valor da fatura também em "totalAmount").
+4. Se o documento for um extrato bancário, NÃO tente classificar cada lançamento individualmente. Em vez disso, resuma os padrões principais que você identificar (ex: "vi recorrência de débitos de água, luz e um financiamento") e PERGUNTE ao usuário se deseja que você sugira valores para essas categorias com base no extrato, antes de preencher automaticamente.
+5. Se o PDF não for legível, estiver corrompido, ou não parecer ser uma fatura/extrato financeiro, informe isso educadamente ao usuário e peça que ele descreva os valores manualmente.
+6. NUNCA invente valores que não conseguir ler claramente no documento. Se uma informação estiver ilegível ou ausente, pergunte ao usuário em vez de estimar.
+
 ## FLUXO DA ENTREVISTA (ETAPA 1 — ONBOARDING)
 Conduza a coleta de dados de forma CONVERSACIONAL e SEQUENCIAL. Faça UMA pergunta por vez. Nunca faça várias perguntas ao mesmo tempo.
 
@@ -212,10 +221,29 @@ export default async function handler(req: Request) {
       .map((m: any) => {
         let role = "user";
         if (m.role === 'assistant') role = "model";
-        return {
-          role: role,
-          parts: [{ text: m.content }],
-        };
+
+        const parts: any[] = [{ text: m.content }];
+
+        // Anexos (PDFs de fatura/extrato) são enviados como inline_data,
+        // no formato multimodal que a API Gemini espera.
+        if (Array.isArray(m.attachments)) {
+          for (const att of m.attachments) {
+            if (att?.mimeType === 'application/pdf' && typeof att.data === 'string') {
+              // Validação defensiva no servidor: ~5MB em base64 ≈ 6.7M caracteres
+              if (att.data.length > 7_000_000) {
+                continue; // ignora silenciosamente anexos grandes demais que passaram do frontend
+              }
+              parts.push({
+                inline_data: {
+                  mime_type: att.mimeType,
+                  data: att.data,
+                },
+              });
+            }
+          }
+        }
+
+        return { role, parts };
       });
 
     // Garante que o histórico comece com user e alterne estritamente
@@ -230,6 +258,11 @@ export default async function handler(req: Request) {
         const last = normalizedMessages[normalizedMessages.length - 1];
         if (last.role === m.role) {
           last.parts[0].text += '\n\n' + m.parts[0].text;
+          // Preserva anexos (inline_data) que viriam depois do texto na mensagem mesclada
+          const extraParts = m.parts.slice(1);
+          if (extraParts.length > 0) {
+            last.parts.push(...extraParts);
+          }
         } else {
           normalizedMessages.push(m);
         }

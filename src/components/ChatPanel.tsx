@@ -3,12 +3,14 @@
 // ==========================================
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import type { Message } from '../types/financial';
+import type { Message, MessageAttachment } from '../types/financial';
 import MessageBubble from './MessageBubble';
+
+const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 
 interface ChatPanelProps {
   messages: Message[];
-  onSendMessage: (content: string) => void;
+  onSendMessage: (content: string, attachment?: MessageAttachment) => void;
   isLoading: boolean;
   onClearChat: () => void;
   onResetData: () => void;
@@ -24,8 +26,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   className = '',
 }) => {
   const [inputValue, setInputValue] = useState('');
+  const [pendingAttachment, setPendingAttachment] = useState<MessageAttachment | null>(null);
+  const [attachmentError, setAttachmentError] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Auto-scroll para última mensagem
   useEffect(() => {
@@ -40,16 +45,54 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
   };
 
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // permite selecionar o mesmo arquivo de novo depois
+    if (!file) return;
+
+    setAttachmentError('');
+
+    if (file.type !== 'application/pdf') {
+      setAttachmentError('Apenas arquivos PDF são aceitos.');
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setAttachmentError('O arquivo deve ter no máximo 5MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // result vem como "data:application/pdf;base64,XXXXX" — extrai só a parte base64
+      const base64 = result.split(',')[1] || '';
+      setPendingAttachment({
+        mimeType: file.type,
+        data: base64,
+        fileName: file.name,
+      });
+    };
+    reader.onerror = () => {
+      setAttachmentError('Não foi possível ler o arquivo. Tente novamente.');
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
   const handleSend = useCallback(() => {
     const trimmed = inputValue.trim();
-    if (!trimmed || isLoading) return;
-    onSendMessage(trimmed);
+    if ((!trimmed && !pendingAttachment) || isLoading) return;
+
+    // Se houver anexo mas nenhum texto, manda uma mensagem padrão para dar contexto à IA
+    const content = trimmed || 'Segue o documento financeiro em anexo para análise.';
+    onSendMessage(content, pendingAttachment || undefined);
+
     setInputValue('');
-    // Reset textarea height
+    setPendingAttachment(null);
+    setAttachmentError('');
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
-  }, [inputValue, isLoading, onSendMessage]);
+  }, [inputValue, isLoading, onSendMessage, pendingAttachment]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -78,7 +121,74 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
 
       {/* Área de Input */}
       <div className="chat-input-area">
+        {pendingAttachment && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '6px 10px',
+              marginBottom: '8px',
+              background: 'rgba(99, 102, 241, 0.08)',
+              border: '1px solid var(--color-border)',
+              borderRadius: '8px',
+              fontSize: '0.8rem',
+              width: 'fit-content',
+            }}
+          >
+            <span>📄 {pendingAttachment.fileName}</span>
+            <button
+              type="button"
+              onClick={() => setPendingAttachment(null)}
+              aria-label="Remover anexo"
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--color-text-secondary)',
+                fontSize: '0.9rem',
+                padding: 0,
+                lineHeight: 1,
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
+        {attachmentError && (
+          <p className="modal-error" role="alert" style={{ fontSize: '0.75rem', marginBottom: '8px' }}>
+            ⚠️ {attachmentError}
+          </p>
+        )}
         <div className="chat-input-wrapper">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/pdf"
+            onChange={handleFileSelect}
+            style={{ display: 'none' }}
+            aria-hidden="true"
+          />
+          <button
+            type="button"
+            className="chat-attach-btn"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isLoading}
+            aria-label="Anexar fatura ou extrato em PDF"
+            title="Anexar PDF (fatura/extrato)"
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: isLoading ? 'not-allowed' : 'pointer',
+              color: 'var(--color-text-secondary)',
+              padding: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              opacity: isLoading ? 0.5 : 1,
+            }}
+          >
+            📎
+          </button>
           <textarea
             ref={textareaRef}
             id="chat-input"
@@ -95,7 +205,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             id="chat-send-btn"
             className="chat-send-btn"
             onClick={handleSend}
-            disabled={!inputValue.trim() || isLoading}
+            disabled={(!inputValue.trim() && !pendingAttachment) || isLoading}
             aria-label="Enviar mensagem"
             title="Enviar (Enter)"
           >
