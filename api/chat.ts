@@ -33,15 +33,9 @@ const SYSTEM_PROMPT = `Você é um **Analista Financeiro Pessoal** experiente e 
 ## IDIOMA
 Sempre responda em Português Brasileiro (pt-BR). Use formatação de moeda brasileira (R$ X.XXX,XX).
 
-## PROCESSAMENTO DE ARQUIVOS ANEXADOS (FATURAS/EXTRATOS EM PDF)
-Quando o usuário anexar um arquivo PDF (fatura de cartão de crédito ou extrato bancário):
-1. Leia o documento e extraia automaticamente: nome do banco/cartão, valor total da fatura/saldo, data de vencimento (se houver), e os principais lançamentos relevantes para classificação (ex: identifique gastos recorrentes que possam já ter sido informados, como "Netflix" → streaming).
-2. Resuma em texto o que você encontrou no documento de forma clara, antes de gerar o JSON: "Identifiquei sua fatura do Nubank com vencimento em [data], valor total de R$ X.XXX,XX."
-3. Se o documento for uma fatura de cartão, mapeie automaticamente para o array "debts" (tipo "credit_card"): o valor total da fatura vai em "monthlyPayment" e, se você conseguir identificar o saldo total/rotativo, em "totalAmount" (caso contrário, repita o valor da fatura também em "totalAmount").
-4. Se o documento for um extrato bancário, NÃO tente classificar cada lançamento individualmente. Em vez disso, resuma os padrões principais que você identificar (ex: "vi recorrência de débitos de água, luz e um financiamento") e PERGUNTE ao usuário se deseja que você sugira valores para essas categorias com base no extrato, antes de preencher automaticamente.
-5. Se o PDF não for legível, estiver corrompido, ou não parecer ser uma fatura/extrato financeiro, informe isso educadamente ao usuário e peça que ele descreva os valores manualmente.
-6. NUNCA invente valores que não conseguir ler claramente no documento. Se uma informação estiver ilegível ou ausente, pergunte ao usuário em vez de estimar.
-7. CRÍTICO — EVITE CONTAGEM DUPLICADA: se você já extraiu gastos de uma fatura/extrato anexado (ex: identificou R$ 400 em combustível, R$ 300 em supermercado, assinaturas de streaming), você DEVE lembrar disso ao chegar nas etapas de despesas fixas/variáveis da entrevista. Em vez de perguntar genericamente "quanto você gasta com transporte?", pergunte de forma específica considerando o que já foi extraído: "Na fatura que você enviou, identifiquei aproximadamente R$ 400/mês em combustível. Esse valor já cobre todo o seu gasto com transporte, ou você tem gastos adicionais em dinheiro, PIX ou outro cartão que não apareceram nessa fatura?". O objetivo é somar apenas o que NÃO está duplicado — nunca conte o mesmo gasto duas vezes (uma vez pela fatura, outra vez pela estimativa verbal do usuário).
+## SOBRE DOCUMENTOS ANEXADOS (FATURAS/EXTRATOS)
+Quando o usuário anexa um PDF de fatura/extrato, ele é processado por um sistema dedicado ANTES de chegar até você — o resultado chega como uma mensagem de texto normal nesta conversa, já resumindo o que foi encontrado no documento (ex: "Identifiquei sua fatura do Nubank, valor total R$ X.XXX,XX, com os seguintes gastos categorizados: ..."). Trate essa mensagem como uma informação fornecida pelo usuário — você não recebe o PDF em si, apenas esse resumo já processado.
+CRÍTICO — EVITE CONTAGEM DUPLICADA: se uma mensagem anterior na conversa já trouxe um resumo de fatura/extrato processado, você DEVE lembrar disso ao chegar nas etapas de despesas fixas/variáveis da entrevista. Em vez de perguntar genericamente "quanto você gasta com transporte?", pergunte de forma específica considerando o que já foi extraído: "Na fatura que você enviou, identifiquei aproximadamente R$ 400/mês em combustível. Esse valor já cobre todo o seu gasto com transporte, ou você tem gastos adicionais em dinheiro, PIX ou outro cartão que não apareceram nessa fatura?". O objetivo é somar apenas o que NÃO está duplicado — nunca conte o mesmo gasto duas vezes.
 
 ## FLUXO DA ENTREVISTA (ETAPA 1 — ONBOARDING)
 Conduza a coleta de dados de forma CONVERSACIONAL e SEQUENCIAL. Faça UMA pergunta por vez. Nunca faça várias perguntas ao mesmo tempo.
@@ -53,8 +47,8 @@ Conduza a coleta de dados de forma CONVERSACIONAL e SEQUENCIAL. Faça UMA pergun
 4. Despesas fixas — moradia e assinaturas: aluguel/financiamento, plano de saúde, internet, telefone, streaming, mensalidades, educação (escola/faculdade/cursos)
 5. Despesas fixas — contas básicas: água, luz, gás (pode pedir a média dos últimos meses se variar)
 6. Despesas fixas — veículo e seguros: seguro do carro, IPVA (pergunte o valor anual e divida por 12 para diluir no mês), manutenção preventiva média mensal
-7. Despesas variáveis: alimentação (mercado + restaurantes), transporte, lazer/compras, pets (ração/veterinário, se houver), cuidados pessoais (salão/barbearia, se houver). NESTA ETAPA TAMBÉM, mencione de forma natural que o usuário pode anexar a fatura do cartão de débito/crédito ou extrato do PIX em PDF (ícone de clipe 📎) caso prefira não estimar de cabeça — isso ajuda a evitar esquecer gastos do dia a dia, já que a maioria das despesas variáveis hoje passa por cartão ou PIX. SE um PDF já foi anexado anteriormente na conversa, NÃO peça os valores dessas categorias do zero — em vez disso, confirme o que já foi extraído da fatura e pergunte apenas pelo que pode estar faltando (gastos em dinheiro, outro cartão, ou período não coberto pela fatura), seguindo a regra de "EVITE CONTAGEM DUPLICADA" descrita acima.
-8. Dívidas: cartão de crédito (valor total, juros mensais, pagamento mínimo), cheque especial, empréstimos pessoais, outras dívidas. NESTA ETAPA, mencione proativamente ao usuário que ele pode anexar o PDF da fatura do cartão (usando o ícone de clipe 📎 no campo de mensagem) em vez de digitar os valores manualmente — você lê o documento e extrai os dados automaticamente. Diga isso de forma natural, como uma dica útil, não como uma exigência.
+7. Despesas variáveis: alimentação (mercado + restaurantes), transporte, lazer/compras, pets (ração/veterinário, se houver), cuidados pessoais (salão/barbearia, se houver). NESTA ETAPA TAMBÉM, mencione de forma natural que o usuário pode anexar a fatura do cartão de débito/crédito ou extrato do PIX em PDF (ícone de clipe 📎) caso prefira não estimar de cabeça. SE um resumo de fatura/extrato já foi processado anteriormente na conversa, NÃO peça os valores dessas categorias do zero — em vez disso, confirme o que já foi extraído e pergunte apenas pelo que pode estar faltando, seguindo a regra de "EVITE CONTAGEM DUPLICADA" descrita acima.
+8. Dívidas: cartão de crédito (valor total, juros mensais, pagamento mínimo), cheque especial, empréstimos pessoais, outras dívidas. NESTA ETAPA, mencione proativamente ao usuário que ele pode anexar o PDF da fatura do cartão (usando o ícone de clipe 📎 no campo de mensagem) em vez de digitar os valores manualmente. Diga isso de forma natural, como uma dica útil, não como uma exigência.
 9. Reservas: valor atual em poupança/investimentos
 
 ## VALIDAÇÃO DE COERÊNCIA DOS DADOS
@@ -220,52 +214,19 @@ export async function POST(req: Request) {
       systemContext += `\n\n## DADOS FINANCEIROS ATUAIS DO USUÁRIO (já coletados anteriormente)\n\`\`\`json\n${JSON.stringify(financialData, null, 2)}\n\`\`\`\nUse esses dados como contexto para continuar a conversa.`;
     }
 
-    // Encontra o índice da ÚLTIMA mensagem do histórico que tem anexo.
-    // Sem isso, o mesmo PDF seria reenviado e reprocessado pelo Gemini em
-    // TODA mensagem subsequente da conversa — o que infla o payload e o
-    // tempo de processamento progressivamente, até estourar o timeout em
-    // conversas longas.
-    let lastAttachmentIndex = -1;
-    messages.forEach((m: any, idx: number) => {
-      if (!m.isTyping && Array.isArray(m.attachments) && m.attachments.length > 0) {
-        lastAttachmentIndex = idx;
-      }
-    });
-
+    // NOTA: anexos de PDF não passam mais por esta rota. O processamento
+    // de documentos é feito por /api/process-document, que retorna um
+    // resumo em texto já inserido como mensagem normal no histórico.
+    // Isso evita o erro 413 (payload too large) que ocorria quando o PDF
+    // em base64 era reenviado junto com o histórico em toda chamada de chat.
     let apiMessages = messages
       .filter((m: any) => !m.isTyping)
-      .map((m: any, filteredIdx: number, filteredArr: any[]) => {
-        // Recupera o índice original (antes do filter) para comparar com lastAttachmentIndex
-        const originalIdx = messages.indexOf(m);
-
+      .map((m: any) => {
         let role = "user";
         if (m.role === 'assistant') role = "model";
-
-        const parts: any[] = [{ text: m.content }];
-
-        // Só inclui o anexo (inline_data) se esta for a última mensagem
-        // da conversa que possui um anexo — mensagens anteriores com PDF
-        // já tiveram seu conteúdo extraído e registrado em texto, então
-        // não precisam reenviar o arquivo bruto novamente.
-        if (originalIdx === lastAttachmentIndex && Array.isArray(m.attachments)) {
-          for (const att of m.attachments) {
-            if (att?.mimeType === 'application/pdf' && typeof att.data === 'string') {
-              // Validação defensiva no servidor: ~5MB em base64 ≈ 6.7M caracteres
-              if (att.data.length > 7_000_000) {
-                continue; // ignora silenciosamente anexos grandes demais que passaram do frontend
-              }
-              parts.push({
-                inline_data: {
-                  mime_type: att.mimeType,
-                  data: att.data,
-                },
-              });
-            }
-          }
-        }
-
-        return { role, parts };
+        return { role, parts: [{ text: m.content }] };
       });
+
 
     // Garante que o histórico comece com user e alterne estritamente
     const normalizedMessages: any[] = [];
@@ -279,11 +240,6 @@ export async function POST(req: Request) {
         const last = normalizedMessages[normalizedMessages.length - 1];
         if (last.role === m.role) {
           last.parts[0].text += '\n\n' + m.parts[0].text;
-          // Preserva anexos (inline_data) que viriam depois do texto na mensagem mesclada
-          const extraParts = m.parts.slice(1);
-          if (extraParts.length > 0) {
-            last.parts.push(...extraParts);
-          }
         } else {
           normalizedMessages.push(m);
         }

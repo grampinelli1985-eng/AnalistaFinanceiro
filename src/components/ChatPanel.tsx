@@ -10,7 +10,7 @@ const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 
 interface ChatPanelProps {
   messages: Message[];
-  onSendMessage: (content: string, attachment?: MessageAttachment) => void;
+  onSendMessage: (content: string) => void;
   isLoading: boolean;
   onClearChat: () => void;
   onResetData: () => void;
@@ -28,6 +28,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   const [inputValue, setInputValue] = useState('');
   const [pendingAttachment, setPendingAttachment] = useState<MessageAttachment | null>(null);
   const [attachmentError, setAttachmentError] = useState('');
+  const [isProcessingDocument, setIsProcessingDocument] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -78,21 +79,65 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     reader.readAsDataURL(file);
   }, []);
 
-  const handleSend = useCallback(() => {
+  const handleSend = useCallback(async () => {
     const trimmed = inputValue.trim();
-    if ((!trimmed && !pendingAttachment) || isLoading) return;
+    if ((!trimmed && !pendingAttachment) || isLoading || isProcessingDocument) return;
 
-    // Se houver anexo mas nenhum texto, manda uma mensagem padrão para dar contexto à IA
-    const content = trimmed || 'Segue o documento financeiro em anexo para análise.';
-    onSendMessage(content, pendingAttachment || undefined);
+    // Caso 1: há um documento anexado — processa numa chamada isolada,
+    // dedicada, que nunca entra no histórico do chat. Só o resumo em
+    // texto resultante é enviado como mensagem normal.
+    if (pendingAttachment) {
+      setIsProcessingDocument(true);
+      setAttachmentError('');
+      try {
+        const response = await fetch('/api/process-document', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mimeType: pendingAttachment.mimeType,
+            data: pendingAttachment.data,
+            fileName: pendingAttachment.fileName,
+          }),
+        });
 
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({ error: 'Erro desconhecido' }));
+          throw new Error(errData.error || `Erro HTTP ${response.status}`);
+        }
+
+        const result = await response.json();
+        const summary: string = result.summary || 'Documento processado.';
+        const extractedDataJson: string | null = result.extractedData || null;
+
+        // Monta a mensagem que entra no chat: o resumo em texto, seguido
+        // (se houver) dos dados extraídos como contexto explícito para a
+        // IA usar na próxima resposta — mas como TEXTO, não como anexo.
+        const messageContent = extractedDataJson
+          ? `📄 Documento anexado: ${pendingAttachment.fileName}\n\n${summary}\n\n[Dados extraídos do documento para referência: ${extractedDataJson}]`
+          : `📄 Documento anexado: ${pendingAttachment.fileName}\n\n${summary}`;
+
+        onSendMessage(trimmed ? `${trimmed}\n\n${messageContent}` : messageContent);
+
+        setPendingAttachment(null);
+        setInputValue('');
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto';
+        }
+      } catch (err: any) {
+        setAttachmentError(err.message || 'Erro ao processar o documento. Tente novamente.');
+      } finally {
+        setIsProcessingDocument(false);
+      }
+      return;
+    }
+
+    // Caso 2: mensagem de texto normal, sem anexo
+    onSendMessage(trimmed);
     setInputValue('');
-    setPendingAttachment(null);
-    setAttachmentError('');
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
-  }, [inputValue, isLoading, onSendMessage, pendingAttachment]);
+  }, [inputValue, isLoading, isProcessingDocument, onSendMessage, pendingAttachment]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -173,19 +218,19 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             type="button"
             className="chat-attach-btn"
             onClick={() => fileInputRef.current?.click()}
-            disabled={isLoading}
+            disabled={isLoading || isProcessingDocument}
             aria-label="Anexar fatura ou extrato em PDF"
             title="Anexar PDF (fatura/extrato)"
             style={{
               background: 'none',
               border: 'none',
-              cursor: isLoading ? 'not-allowed' : 'pointer',
+              cursor: (isLoading || isProcessingDocument) ? 'not-allowed' : 'pointer',
               color: 'var(--color-text-secondary)',
               padding: '8px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              opacity: isLoading ? 0.5 : 1,
+              opacity: (isLoading || isProcessingDocument) ? 0.5 : 1,
               fontSize: '1.4rem',
               lineHeight: 1,
               width: '36px',
@@ -199,23 +244,23 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             ref={textareaRef}
             id="chat-input"
             className="chat-textarea"
-            placeholder="Digite sua resposta..."
+            placeholder={isProcessingDocument ? 'Lendo o documento...' : 'Digite sua resposta...'}
             value={inputValue}
             onChange={handleTextareaChange}
             onKeyDown={handleKeyDown}
             rows={1}
-            disabled={isLoading}
+            disabled={isLoading || isProcessingDocument}
             aria-label="Campo de mensagem"
           />
           <button
             id="chat-send-btn"
             className="chat-send-btn"
             onClick={handleSend}
-            disabled={(!inputValue.trim() && !pendingAttachment) || isLoading}
+            disabled={(!inputValue.trim() && !pendingAttachment) || isLoading || isProcessingDocument}
             aria-label="Enviar mensagem"
             title="Enviar (Enter)"
           >
-            {isLoading ? (
+            {(isLoading || isProcessingDocument) ? (
               <span className="spinner" style={{ width: 16, height: 16 }} />
             ) : (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -225,6 +270,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             )}
           </button>
         </div>
+        {isProcessingDocument && (
+          <p style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: '6px' }}>
+            📄 Lendo seu documento, isso pode levar alguns segundos...
+          </p>
+        )}
         <div className="chat-hint">
           Pressione <strong>Enter</strong> para enviar · <strong>Shift+Enter</strong> para nova linha
           {messages.length > 2 && (

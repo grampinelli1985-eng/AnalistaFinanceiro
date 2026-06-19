@@ -45,7 +45,6 @@ import { calculateFinancialBalance } from './utils/financialCalculations';
 import { generateId, getCurrentMonthKey } from './utils/formatters';
 import type {
   Message,
-  MessageAttachment,
   FinancialData,
   FinancialBalance,
   MonthlySnapshot,
@@ -323,7 +322,7 @@ const App: React.FC = () => {
   }, [handleLogout, showToast]);
 
   // ── Enviar mensagem ao Gemini ──────────────
-  const handleSendMessage = useCallback(async (content: string, attachment?: MessageAttachment) => {
+  const handleSendMessage = useCallback(async (content: string) => {
     if (isLoadingChat || !activeProfile) return;
 
     const userMessage: Message = {
@@ -331,7 +330,6 @@ const App: React.FC = () => {
       role: 'user',
       content,
       timestamp: new Date(),
-      ...(attachment ? { attachments: [attachment] } : {}),
     };
 
     const typingMessage: Message = {
