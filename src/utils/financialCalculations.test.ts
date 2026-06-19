@@ -20,6 +20,12 @@ describe('financialCalculations', () => {
         phone: 50,
         streaming: 50,
         subscriptions: 0,
+        water: 0,
+        electricity: 0,
+        gas: 0,
+        carInsurance: 0,
+        homeInsurance: 0,
+        education: 0,
         other: 0,
       },
       variableExpenses: {
@@ -28,8 +34,12 @@ describe('financialCalculations', () => {
         transport: 150,
         leisure: 100,
         shopping: 0,
+        health: 0,
+        pets: 0,
+        personalCare: 0,
         other: 0,
       },
+      seasonalExpenses: [],
       debts: [
         {
           id: 'debt-1',
@@ -83,8 +93,9 @@ describe('financialCalculations', () => {
     const data: FinancialData = {
       userName: 'Test User',
       income: { salary: 0, freelance: 0, other: 0, eventualBonus: 0 },
-      fixedExpenses: { rent: 1000, vehicleLoan: 0, healthPlan: 0, internet: 0, phone: 0, streaming: 0, subscriptions: 0, other: 0 },
-      variableExpenses: { food: 500, restaurants: 0, transport: 0, leisure: 0, shopping: 0, other: 0 },
+      fixedExpenses: { rent: 1000, vehicleLoan: 0, healthPlan: 0, internet: 0, phone: 0, streaming: 0, subscriptions: 0, water: 0, electricity: 0, gas: 0, carInsurance: 0, homeInsurance: 0, education: 0, other: 0 },
+      variableExpenses: { food: 500, restaurants: 0, transport: 0, leisure: 0, shopping: 0, health: 0, pets: 0, personalCare: 0, other: 0 },
+      seasonalExpenses: [],
       debts: [
         { id: 'd1', name: 'Cheque especial', type: 'other', totalAmount: 5000, monthlyPayment: 500, monthlyInterestRate: 8, remainingMonths: 10 }
       ],
@@ -99,6 +110,29 @@ describe('financialCalculations', () => {
     expect(balance.monthlyBalance).toBe(-2000);
     expect(balance.incomeCommitmentIndex).toBe(100);
     expect(balance.healthLevel).toBe('critical');
+  });
+
+  it('should correctly dilute seasonal expenses (annual/year) into the monthly total', () => {
+    const data: FinancialData = {
+      userName: 'Test User',
+      income: { salary: 6000, freelance: 0, other: 0, eventualBonus: 0 },
+      fixedExpenses: { rent: 1500, vehicleLoan: 0, healthPlan: 0, internet: 0, phone: 0, streaming: 0, subscriptions: 0, water: 0, electricity: 0, gas: 0, carInsurance: 0, homeInsurance: 0, education: 0, other: 0 },
+      variableExpenses: { food: 0, restaurants: 0, transport: 0, leisure: 0, shopping: 0, health: 0, pets: 0, personalCare: 0, other: 0 },
+      seasonalExpenses: [
+        { id: 's1', name: 'IPVA', annualAmount: 1200, monthDue: 1 },
+        { id: 's2', name: 'Seguro Residencial', annualAmount: 600, monthDue: 6 },
+      ],
+      debts: [],
+      savings: { currentAmount: 0, emergencyFundMonths: 0 },
+      lastUpdated: new Date().toISOString(),
+    };
+
+    const balance = calculateFinancialBalance(data);
+
+    // (1200 + 600) / 12 = 150
+    expect(balance.totalSeasonalMonthly).toBe(150);
+    expect(balance.totalExpenses).toBe(1650); // 1500 (fixed) + 0 (variable) + 150 (seasonal)
+    expect(balance.monthlyBalance).toBe(4350); // 6000 - 1650
   });
 
   describe('calculateHealthLevel', () => {

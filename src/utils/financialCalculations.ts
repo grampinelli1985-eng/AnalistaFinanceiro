@@ -23,6 +23,12 @@ export function calculateFinancialBalance(data: FinancialData): FinancialBalance
     (data.fixedExpenses.phone || 0) +
     (data.fixedExpenses.streaming || 0) +
     (data.fixedExpenses.subscriptions || 0) +
+    (data.fixedExpenses.water || 0) +
+    (data.fixedExpenses.electricity || 0) +
+    (data.fixedExpenses.gas || 0) +
+    (data.fixedExpenses.carInsurance || 0) +
+    (data.fixedExpenses.homeInsurance || 0) +
+    (data.fixedExpenses.education || 0) +
     (data.fixedExpenses.other || 0);
 
   // Despesas variáveis
@@ -32,7 +38,17 @@ export function calculateFinancialBalance(data: FinancialData): FinancialBalance
     (data.variableExpenses.transport || 0) +
     (data.variableExpenses.leisure || 0) +
     (data.variableExpenses.shopping || 0) +
+    (data.variableExpenses.health || 0) +
+    (data.variableExpenses.pets || 0) +
+    (data.variableExpenses.personalCare || 0) +
     (data.variableExpenses.other || 0);
+
+  // Gastos sazonais diluídos por mês (ex: IPVA de R$ 1.200/ano = R$ 100/mês)
+  // Isso evita que o usuário seja pego de surpresa em meses específicos.
+  const totalSeasonalMonthly = (data.seasonalExpenses || []).reduce(
+    (sum, exp) => sum + (exp.annualAmount || 0) / 12,
+    0
+  );
 
   // Parcelas de dívidas
   const totalDebtPayments = data.debts.reduce(
@@ -40,7 +56,7 @@ export function calculateFinancialBalance(data: FinancialData): FinancialBalance
     0
   );
 
-  const totalExpenses = totalFixedExpenses + totalVariableExpenses + totalDebtPayments;
+  const totalExpenses = totalFixedExpenses + totalVariableExpenses + totalSeasonalMonthly + totalDebtPayments;
   const monthlyBalance = totalIncome - totalExpenses;
 
   // Total de dívidas
@@ -56,7 +72,7 @@ export function calculateFinancialBalance(data: FinancialData): FinancialBalance
       : 100;
 
   // Meses de reserva
-  const monthlyEssentials = totalFixedExpenses + totalVariableExpenses;
+  const monthlyEssentials = totalFixedExpenses + totalVariableExpenses + totalSeasonalMonthly;
   const savingsInMonths =
     monthlyEssentials > 0
       ? parseFloat((data.savings.currentAmount / monthlyEssentials).toFixed(1))
@@ -74,6 +90,7 @@ export function calculateFinancialBalance(data: FinancialData): FinancialBalance
     totalIncome,
     totalFixedExpenses,
     totalVariableExpenses,
+    totalSeasonalMonthly,
     totalDebtPayments,
     totalExpenses,
     monthlyBalance,

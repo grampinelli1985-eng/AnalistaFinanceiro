@@ -25,6 +25,12 @@ export interface FixedExpenses {
   phone: number;
   streaming: number;
   subscriptions: number;
+  water: number;
+  electricity: number;
+  gas: number;
+  carInsurance: number;
+  homeInsurance: number;
+  education: number;
   other: number;
 }
 
@@ -34,7 +40,17 @@ export interface VariableExpenses {
   transport: number;
   leisure: number;
   shopping: number;
+  health: number;
+  pets: number;
+  personalCare: number;
   other: number;
+}
+
+export interface SeasonalExpense {
+  id: string;
+  name: string;
+  annualAmount: number;
+  monthDue: number; // 1-12, mês em que o gasto geralmente ocorre
 }
 
 export interface Debt {
@@ -58,6 +74,7 @@ export interface FinancialBalance {
   totalIncome: number;
   totalFixedExpenses: number;
   totalVariableExpenses: number;
+  totalSeasonalMonthly: number;
   totalDebtPayments: number;
   totalExpenses: number;
   monthlyBalance: number;
@@ -72,6 +89,7 @@ export interface FinancialData {
   income: Income;
   fixedExpenses: FixedExpenses;
   variableExpenses: VariableExpenses;
+  seasonalExpenses: SeasonalExpense[];
   debts: Debt[];
   savings: Savings;
   lastUpdated: string;

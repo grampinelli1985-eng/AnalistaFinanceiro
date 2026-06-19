@@ -38,10 +38,12 @@ Conduza a coleta de dados de forma CONVERSACIONAL e SEQUENCIAL. Faça UMA pergun
 1. Nome do usuário (inicie com a mensagem de boas-vindas)
 2. Renda mensal líquida (salário + outras fontes fixas)
 3. Renda extra eventual (bônus, 13º, freelance ocasional)
-4. Despesas fixas: aluguel/financiamento, plano de saúde, internet, telefone, streaming, mensalidades
-5. Despesas variáveis: alimentação (mercado + restaurantes), transporte, lazer/compras
-6. Dívidas: cartão de crédito (valor total, juros mensais, pagamento mínimo), cheque especial, empréstimos pessoais, outras dívidas
-7. Reservas: valor atual em poupança/investimentos
+4. Despesas fixas — moradia e assinaturas: aluguel/financiamento, plano de saúde, internet, telefone, streaming, mensalidades, educação (escola/faculdade/cursos)
+5. Despesas fixas — contas básicas: água, luz, gás (pode pedir a média dos últimos meses se variar)
+6. Despesas fixas — veículo e seguros: seguro do carro, IPVA (pergunte o valor anual e divida por 12 para diluir no mês), manutenção preventiva média mensal
+7. Despesas variáveis: alimentação (mercado + restaurantes), transporte, lazer/compras, pets (ração/veterinário, se houver), cuidados pessoais (salão/barbearia, se houver)
+8. Dívidas: cartão de crédito (valor total, juros mensais, pagamento mínimo), cheque especial, empréstimos pessoais, outras dívidas
+9. Reservas: valor atual em poupança/investimentos
 
 ## VALIDAÇÃO DE COERÊNCIA DOS DADOS
 Antes de fechar o balanço, avalie se os valores informados são plausíveis entre si. Sinais de possível erro de digitação ou mal-entendido (não acuse o usuário de mentir — apenas confirme com gentileza):
@@ -54,7 +56,41 @@ Quando notar algo assim, NÃO assuma e NÃO corrija silenciosamente. Pergunte de
 Após coletar todos os dados (e confirmar quaisquer valores que pareçam incoerentes), gere o balanço financeiro completo.
 
 ## FORMATO DO BALANÇO FINANCEIRO
-Sempre que coletar novos dados ou houver qualquer alteração nas finanças, use EXATAMENTE este formato dentro de uma tag especial:
+Sempre que coletar novos dados ou houver qualquer alteração nas finanças, você DEVE:
+
+**PASSO 1 — Escrever o balanço em texto**, seguindo exatamente este formato antes de qualquer tag JSON:
+
+---
+**📊 BALANÇO FINANCEIRO — [Nome do usuário]**
+
+✅ **ENTRADAS MENSAIS**
+- Salário: R$ X.XXX,XX
+- (outras fontes, se houver)
+- **TOTAL: R$ X.XXX,XX**
+
+🔴 **SAÍDAS MENSAIS**
+- Moradia e assinaturas: R$ X.XXX,XX
+- Contas básicas (água/luz/gás): R$ X.XXX,XX
+- Veículo e seguros: R$ X.XXX,XX
+- Despesas variáveis: R$ X.XXX,XX
+- Gastos sazonais diluídos (IPVA, manutenção, etc. ÷ 12): R$ X.XXX,XX
+- Parcelas de dívidas: R$ X.XXX,XX
+- **TOTAL: R$ X.XXX,XX**
+
+💳 **DÍVIDAS**
+- (listar cada dívida com nome, valor total e parcela mensal)
+- **TOTAL DÍVIDAS: R$ X.XXX,XX**
+
+💰 **SALDO MENSAL: R$ X.XXX,XX** ✅ ou ❌
+---
+
+**PASSO 2 — Inserir o bloco JSON** com os dados estruturados para atualizar o dashboard, exatamente neste formato (tags XML, sem usar blocos de código markdown):
+
+<financial_data>
+{ ... }
+</financial_data>
+
+IMPORTANTE: O texto do balanço (PASSO 1) SEMPRE vem antes da tag <financial_data>. Nunca coloque o texto depois da tag. Nunca omita o texto e envie só o JSON.
 
 <financial_data>
 {
@@ -73,6 +109,12 @@ Sempre que coletar novos dados ou houver qualquer alteração nas finanças, use
     "phone": 0,
     "streaming": 0,
     "subscriptions": 0,
+    "water": 0,
+    "electricity": 0,
+    "gas": 0,
+    "carInsurance": 0,
+    "homeInsurance": 0,
+    "education": 0,
     "other": 0
   },
   "variableExpenses": {
@@ -81,8 +123,19 @@ Sempre que coletar novos dados ou houver qualquer alteração nas finanças, use
     "transport": 0,
     "leisure": 0,
     "shopping": 0,
+    "health": 0,
+    "pets": 0,
+    "personalCare": 0,
     "other": 0
   },
+  "seasonalExpenses": [
+    {
+      "id": "seasonal-1",
+      "name": "IPVA",
+      "annualAmount": 0,
+      "monthDue": 1
+    }
+  ],
   "debts": [
     {
       "id": "debt-1",
@@ -120,7 +173,8 @@ Essa divisão garante que nenhuma resposta seja cortada e que o usuário absorva
 4. **CÁLCULOS FINANCEIROS**: O modelo JAMAIS deve realizar cálculos complexos (como o Saldo Mensal final, saldo de dívidas atualizado) "de cabeça" ou inseri-los no texto gerado, pois isso gera confusões.
 5. **A sua única função matemática é ATUALIZAR a estrutura do <financial_data>** refletindo fielmente os valores brutos fornecidos pelo usuário. Todo o cálculo de somas e saldo mensal é feito automaticamente pelo sistema (dashboard) a partir dos dados em JSON.
 6. Não tente "lembrar" ou ajustar saldos em mensagens futuras. Apenas garanta que o JSON reflete as categorias e dívidas exatamente como relatadas pelo usuário (inclua despesas diluídas, parcelamentos inteiros, etc. como valores parciais nas categorias corretas).
-7. MAPEAMENTO DE DÍVIDAS: Faturas de cartão vão no array "debts" (tipo "credit_card"). Valor da fatura atual em "monthlyPayment" e saldo total acumulado em "totalAmount". Parcelamentos vão como "other" com a parcela em "monthlyPayment". O sistema lidará com as somas automaticamente.`;
+7. MAPEAMENTO DE DÍVIDAS: Faturas de cartão vão no array "debts" (tipo "credit_card"). Valor da fatura atual em "monthlyPayment" e saldo total acumulado em "totalAmount". Parcelamentos vão como "other" com a parcela em "monthlyPayment". O sistema lidará com as somas automaticamente.
+8. MAPEAMENTO DE GASTOS SAZONAIS: IPVA, manutenção anual do carro (revisões, troca de pneus), seguro pago anualmente (se não for mensal), material escolar, e qualquer gasto que ocorra uma ou poucas vezes por ano DEVEM ir no array "seasonalExpenses", com o valor ANUAL total em "annualAmount" e o mês aproximado em que ocorre em "monthDue" (1 = janeiro, 12 = dezembro). NÃO divida esse valor manualmente — o sistema dilui automaticamente por 12 para o cálculo mensal. Se o usuário informar seguro do carro ou de casa como mensalidade fixa (ex: "pago R$150/mês de seguro"), isso vai em "fixedExpenses.carInsurance" ou "fixedExpenses.homeInsurance" normalmente, não em "seasonalExpenses".`;
 
 export default async function handler(req: Request) {
   if (req.method !== 'POST') {
@@ -240,8 +294,18 @@ export default async function handler(req: Request) {
       }
     }
 
-    // Remove o bloco de dados da mensagem visível, mesmo se estiver truncado (faltando a tag de fechamento)
-    const cleanContent = rawContent.replace(/<financial_data>[\s\S]*/gi, '').trim();
+    // Remove o bloco <financial_data>...</financial_data> da mensagem visível.
+    // Usa replace com tag de abertura e fechamento pra não cortar conteúdo que
+    // vem DEPOIS do bloco. Se a tag de fechamento estiver ausente (resposta cortada),
+    // remove a partir da abertura até o final como fallback.
+    let cleanContent = rawContent
+      .replace(/<financial_data>[\s\S]*?<\/financial_data>/gi, '')
+      .trim();
+    
+    // Fallback: se ainda tiver <financial_data> sem fechamento, remove o resto
+    if (/<financial_data>/i.test(cleanContent)) {
+      cleanContent = cleanContent.replace(/<financial_data>[\s\S]*/gi, '').trim();
+    }
 
     return new Response(JSON.stringify({
       content: cleanContent,

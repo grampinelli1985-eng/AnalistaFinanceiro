@@ -131,6 +131,12 @@ const SidePanel: React.FC<SidePanelProps> = ({
                       <span className="summary-row-label">Despesas variáveis</span>
                       <span className="summary-row-value">{formatCurrency(balance.totalVariableExpenses)}</span>
                     </div>
+                    {balance.totalSeasonalMonthly > 0 && (
+                      <div className="summary-row">
+                        <span className="summary-row-label">Sazonais (IPVA, manutenção, ÷12)</span>
+                        <span className="summary-row-value">{formatCurrency(balance.totalSeasonalMonthly)}</span>
+                      </div>
+                    )}
                     {balance.totalDebtPayments > 0 && (
                       <div className="summary-row">
                         <span className="summary-row-label">Parcelas de dívidas</span>
@@ -172,6 +178,32 @@ const SidePanel: React.FC<SidePanelProps> = ({
                     <div className="summary-total" style={{ marginTop: '8px' }}>
                       <span className="summary-total-label">TOTAL DÍVIDAS</span>
                       <span className="summary-total-value value-red">{formatCurrency(balance.totalDebts)}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Gastos Sazonais */}
+                {financialData && financialData.seasonalExpenses && financialData.seasonalExpenses.length > 0 && (
+                  <div className="card">
+                    <div className="card-title">📅 Gastos Sazonais (IPVA, manutenção, etc.)</div>
+                    {financialData.seasonalExpenses.map((exp) => {
+                      const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+                      const monthLabel = monthNames[Math.max(0, Math.min(11, exp.monthDue - 1))];
+                      return (
+                        <div key={exp.id} className="debt-item">
+                          <div className="debt-item-header">
+                            <span className="debt-item-name">{exp.name}</span>
+                            <span className="debt-item-amount">{formatCurrency(exp.annualAmount)}/ano</span>
+                          </div>
+                          <div className="debt-item-detail">
+                            Ocorre em: {monthLabel} · Diluído: {formatCurrency(exp.annualAmount / 12)}/mês
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className="summary-total" style={{ marginTop: '8px' }}>
+                      <span className="summary-total-label">TOTAL DILUÍDO/MÊS</span>
+                      <span className="summary-total-value">{formatCurrency(balance.totalSeasonalMonthly)}</span>
                     </div>
                   </div>
                 )}
