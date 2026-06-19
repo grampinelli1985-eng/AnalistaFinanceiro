@@ -1,5 +1,9 @@
+// Usamos o runtime Node.js (não Edge) porque o processamento de PDFs grandes
+// e listas extensas de lançamentos pode levar mais de 25s para o Gemini responder.
+// O Edge Runtime mata a conexão sem aviso nesse caso (504 Gateway Timeout);
+// o runtime Node.js permite configurar maxDuration explicitamente.
 export const config = {
-  runtime: 'edge',
+  maxDuration: 60, // segundos — máximo permitido no plano Hobby do Vercel
 };
 
 declare const process: {
