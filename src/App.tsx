@@ -25,6 +25,7 @@ import {
   saveProfile,
   setActiveProfileId,
   loadProfiles,
+  deleteProfile,
   loadFinancialData,
   loadChatHistory,
   loadMonthlySnapshots,
@@ -524,6 +525,44 @@ const App: React.FC = () => {
     showToast(`🗑️ Dados do perfil "${activeProfile.name}" apagados.`);
   }, [activeProfile, showToast]);
 
+  // ── Excluir um Perfil Específico ───────────
+  const handleDeleteProfile = useCallback(async (profile: Profile) => {
+    if (profiles.length <= 1) {
+      showToast('⚠️ Não é possível excluir o único perfil da conta. Use "Excluir Minha Conta" nas configurações de Privacidade para isso.');
+      return;
+    }
+
+    setIsDataLoading(true);
+    try {
+      const success = await deleteProfile(profile.id);
+      if (!success) {
+        showToast('❌ Erro ao excluir o perfil. Tente novamente.');
+        return;
+      }
+
+      const updatedProfiles = await loadProfiles();
+      setProfiles(updatedProfiles);
+
+      // Se o perfil excluído era o ativo, volta para a tela de seleção
+      if (activeProfile?.id === profile.id) {
+        setActiveProfile(null);
+        setActiveProfileId(null);
+        setFinancialData(null);
+        setBalance(null);
+        setSnapshots([]);
+        setMessages([]);
+        setAppView('profile-select');
+      }
+
+      showToast(`🗑️ Perfil "${profile.name}" excluído com sucesso.`);
+    } catch (err) {
+      console.error('Erro ao excluir perfil:', err);
+      showToast('❌ Erro ao excluir o perfil.');
+    } finally {
+      setIsDataLoading(false);
+    }
+  }, [profiles, activeProfile, showToast]);
+
   // ── Exportar PDF ───────────────────────────
   const handleExportPDF = useCallback(async () => {
     if (!financialData || !balance || !activeProfile) {
@@ -832,6 +871,7 @@ const App: React.FC = () => {
             const updatedProfiles = await loadProfiles();
             setProfiles(updatedProfiles);
           }}
+          onDeleteProfile={handleDeleteProfile}
           onClose={() => setShowSettingsModal(false)}
           onExportData={handleExportUserData}
           onDeleteAccountAndData={handleDeleteAccountAndData}

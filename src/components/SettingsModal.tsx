@@ -8,6 +8,7 @@ import type { Profile } from '../types/financial';
 interface SettingsModalProps {
   profiles: Profile[];
   onUpdateProfile: (profile: Profile) => Promise<void>;
+  onDeleteProfile: (profile: Profile) => Promise<void>;
   onClose: () => void;
   onExportData: () => Promise<void>;
   onDeleteAccountAndData: () => Promise<void>;
@@ -18,6 +19,7 @@ type SettingsTab = 'sharing' | 'privacy';
 const SettingsModal: React.FC<SettingsModalProps> = ({
   profiles,
   onUpdateProfile,
+  onDeleteProfile,
   onClose,
   onExportData,
   onDeleteAccountAndData,
@@ -28,6 +30,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const [isExporting, setIsExporting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmedIrreversible, setConfirmedIrreversible] = useState(false);
+
+  // Exclusão de perfil individual (Id -> Loading)
+  const [deletingProfileIds, setDeletingProfileIds] = useState<Record<string, boolean>>({});
 
 
   // Toggles Saving State (Id -> Loading)
@@ -46,6 +51,23 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
       setUpdatingProfileIds((prev) => ({ ...prev, [profile.id]: false }));
     }
   }, [onUpdateProfile]);
+
+  const handleDeleteProfile = useCallback(async (profile: Profile) => {
+    if (profiles.length <= 1) return; // proteção extra na UI, além da que já existe no App.tsx
+
+    if (!window.confirm(`Tem certeza que deseja excluir o perfil "${profile.name}"? Todos os dados financeiros, chats e histórico desse perfil serão perdidos permanentemente.`)) {
+      return;
+    }
+
+    setDeletingProfileIds((prev) => ({ ...prev, [profile.id]: true }));
+    try {
+      await onDeleteProfile(profile);
+    } catch (err) {
+      console.error('Erro ao excluir perfil:', err);
+    } finally {
+      setDeletingProfileIds((prev) => ({ ...prev, [profile.id]: false }));
+    }
+  }, [onDeleteProfile, profiles.length]);
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -103,9 +125,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   {profiles.map((p) => {
                     const isSaving = !!updatingProfileIds[p.id];
+                    const isDeletingThis = !!deletingProfileIds[p.id];
+                    const isOnlyProfile = profiles.length <= 1;
                     return (
-                      <div key={p.id} className="settings-profile-row">
-                        <div className="settings-profile-info">
+                      <div key={p.id} className="settings-profile-row" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div className="settings-profile-info" style={{ flex: 1 }}>
                           <div
                             className="settings-profile-avatar"
                             style={{
@@ -132,6 +156,31 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                             <span className="spinner" style={{ width: 12, height: 12, position: 'absolute', top: 6, left: p.allowFamilyView ? 24 : 6 }} />
                           ) : (
                             <div className="profile-toggle-thumb" />
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => !isDeletingThis && !isOnlyProfile && handleDeleteProfile(p)}
+                          disabled={isDeletingThis || isOnlyProfile}
+                          aria-label={`Excluir perfil ${p.name}`}
+                          title={isOnlyProfile ? 'Não é possível excluir o único perfil da conta' : `Excluir perfil ${p.name}`}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: isOnlyProfile ? 'not-allowed' : 'pointer',
+                            opacity: isOnlyProfile ? 0.3 : 0.7,
+                            color: 'var(--color-critical)',
+                            padding: '6px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            fontSize: '0.95rem',
+                          }}
+                        >
+                          {isDeletingThis ? (
+                            <span className="spinner" style={{ width: 12, height: 12 }} />
+                          ) : (
+                            '🗑️'
                           )}
                         </button>
                       </div>
