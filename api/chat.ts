@@ -1,10 +1,8 @@
-// Usamos o runtime Node.js (não Edge) porque o processamento de PDFs grandes
-// e listas extensas de lançamentos pode levar mais de 25s para o Gemini responder.
-// O Edge Runtime mata a conexão sem aviso nesse caso (504 Gateway Timeout);
-// o runtime Node.js permite configurar maxDuration explicitamente.
-export const config = {
-  maxDuration: 60, // segundos — máximo permitido no plano Hobby do Vercel
-};
+// Usamos o runtime Node.js padrão (não Edge — Edge Functions estão
+// descontinuadas). O Fluid Compute do Vercel já dá 300s de execução por
+// padrão em todos os planos, mas declaramos explicitamente 60s aqui como
+// um limite intencional e generoso para processar PDFs grandes via Gemini.
+export const maxDuration = 60;
 
 declare const process: {
   env: {
@@ -189,7 +187,7 @@ Essa divisão garante que nenhuma resposta seja cortada e que o usuário absorva
 7. MAPEAMENTO DE DÍVIDAS: Faturas de cartão vão no array "debts" (tipo "credit_card"). Valor da fatura atual em "monthlyPayment" e saldo total acumulado em "totalAmount". Parcelamentos vão como "other" com a parcela em "monthlyPayment". O sistema lidará com as somas automaticamente.
 8. MAPEAMENTO DE GASTOS SAZONAIS: IPVA, manutenção anual do carro (revisões, troca de pneus), seguro pago anualmente (se não for mensal), material escolar, e qualquer gasto que ocorra uma ou poucas vezes por ano DEVEM ir no array "seasonalExpenses", com o valor ANUAL total em "annualAmount" e o mês aproximado em que ocorre em "monthDue" (1 = janeiro, 12 = dezembro). NÃO divida esse valor manualmente — o sistema dilui automaticamente por 12 para o cálculo mensal. Se o usuário informar seguro do carro ou de casa como mensalidade fixa (ex: "pago R$150/mês de seguro"), isso vai em "fixedExpenses.carInsurance" ou "fixedExpenses.homeInsurance" normalmente, não em "seasonalExpenses".`;
 
-export default async function handler(req: Request) {
+export async function POST(req: Request) {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
@@ -220,17 +218,34 @@ export default async function handler(req: Request) {
       systemContext += `\n\n## DADOS FINANCEIROS ATUAIS DO USUÁRIO (já coletados anteriormente)\n\`\`\`json\n${JSON.stringify(financialData, null, 2)}\n\`\`\`\nUse esses dados como contexto para continuar a conversa.`;
     }
 
+    // Encontra o índice da ÚLTIMA mensagem do histórico que tem anexo.
+    // Sem isso, o mesmo PDF seria reenviado e reprocessado pelo Gemini em
+    // TODA mensagem subsequente da conversa — o que infla o payload e o
+    // tempo de processamento progressivamente, até estourar o timeout em
+    // conversas longas.
+    let lastAttachmentIndex = -1;
+    messages.forEach((m: any, idx: number) => {
+      if (!m.isTyping && Array.isArray(m.attachments) && m.attachments.length > 0) {
+        lastAttachmentIndex = idx;
+      }
+    });
+
     let apiMessages = messages
       .filter((m: any) => !m.isTyping)
-      .map((m: any) => {
+      .map((m: any, filteredIdx: number, filteredArr: any[]) => {
+        // Recupera o índice original (antes do filter) para comparar com lastAttachmentIndex
+        const originalIdx = messages.indexOf(m);
+
         let role = "user";
         if (m.role === 'assistant') role = "model";
 
         const parts: any[] = [{ text: m.content }];
 
-        // Anexos (PDFs de fatura/extrato) são enviados como inline_data,
-        // no formato multimodal que a API Gemini espera.
-        if (Array.isArray(m.attachments)) {
+        // Só inclui o anexo (inline_data) se esta for a última mensagem
+        // da conversa que possui um anexo — mensagens anteriores com PDF
+        // já tiveram seu conteúdo extraído e registrado em texto, então
+        // não precisam reenviar o arquivo bruto novamente.
+        if (originalIdx === lastAttachmentIndex && Array.isArray(m.attachments)) {
           for (const att of m.attachments) {
             if (att?.mimeType === 'application/pdf' && typeof att.data === 'string') {
               // Validação defensiva no servidor: ~5MB em base64 ≈ 6.7M caracteres
