@@ -184,7 +184,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
               padding: '8px',
               display: 'flex',
               alignItems: 'center',
+              justifyContent: 'center',
               opacity: isLoading ? 0.5 : 1,
+              fontSize: '1.4rem',
+              lineHeight: 1,
+              width: '36px',
+              height: '36px',
+              flexShrink: 0,
             }}
           >
             📎
