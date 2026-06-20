@@ -28,7 +28,7 @@ const faqs = [
   },
   {
     q: 'O serviço é realmente gratuito?',
-    a: 'Durante o período Beta, todas as funcionalidades são 100% gratuitas para os primeiros 100 cadastros. Não é exigido cartão de crédito.'
+    a: 'Durante o período Beta, as primeiras 50 vagas têm acesso 100% gratuito por 90 dias. Não é exigido cartão de crédito para testar.'
   }
 ];
 
@@ -151,7 +151,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
     setOpenFaqIndex(openFaqIndex === index ? null : index);
   };
 
-  const slotsPercentage = betaSlotsUsed !== null ? Math.min((betaSlotsUsed / 100) * 100, 100) : 0;
+  const slotsPercentage = betaSlotsUsed !== null ? Math.min((betaSlotsUsed / 50) * 100, 100) : 0;
   const isSlotsCritical = betaSlotsUsed !== null && slotsPercentage >= 70;
 
   return (
@@ -403,7 +403,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
             </ul>
           </div>
         </div>
-        <p style={{ textAlign: 'center', fontSize: '0.8rem', opacity: 0.6, marginTop: '8px' }}>
+        <p style={{ textAlign: 'center', fontSize: '0.8rem', opacity: 0.6, marginTop: '8px', marginBottom: '24px' }}>
           *Exemplo ilustrativo da metodologia, não um resultado garantido. Seus resultados dependem da sua situação financeira real.
         </p>
         <div className="ba-cta">
@@ -436,47 +436,91 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
         <div className="pricing-content">
           <h2>Sua independência financeira está a um clique de distância</h2>
           <p>
-            O Analista Financeiro IA está liberado em <strong>Acesso Antecipado (Beta)</strong>.
-            Em breve lançaremos os planos premium. Aproveite todas as funcionalidades avançadas sem pagar nada hoje.
+            Escolha o melhor plano para iniciar sua jornada de organização. Comece agora mesmo e assuma o controle.
           </p>
-          <div className="pricing-card">
-            <div className="pricing-badge">Mais Popular</div>
-            <div className="pricing-header">
-              <h3>Plano Beta</h3>
-              <div className="price">Grátis<span>/vitalício para os 100 primeiros</span></div>
-            </div>
+          <div className="pricing-grid">
+            {/* Plano Beta — Ocultado automaticamente se as 50 vagas estiverem esgotadas */}
+            {(betaSlotsUsed === null || betaSlotsUsed < 50) && (
+              <div className="pricing-card">
+                <div className="pricing-header">
+                  <h3>Plano Beta</h3>
+                  <div className="price" style={{ fontSize: '2.8rem' }}>Grátis<span>/90 dias de trial</span></div>
+                </div>
 
-            {/* Progress Bar — só exibido quando temos a contagem REAL */}
-            {betaSlotsUsed !== null ? (
-              <div className="slots-container">
-                <div className="slots-text">
-                  <strong>{betaSlotsUsed}</strong> de 100 vagas preenchidas
-                </div>
-                <div className="slots-bar-bg">
-                  <div
-                    className={`slots-bar-fill ${isSlotsCritical ? 'critical' : ''}`}
-                    style={{ width: `${slotsPercentage}%` }}
-                  ></div>
-                </div>
-                {isSlotsCritical && <div className="slots-warning">Vagas limitadas!</div>}
-              </div>
-            ) : (
-              <div className="slots-container">
-                <div className="slots-text">Acesso Beta gratuito disponível</div>
+                {betaSlotsUsed !== null ? (
+                  <div className="slots-container" style={{ margin: '1rem 0' }}>
+                    <div className="slots-text">
+                      <strong>{betaSlotsUsed}</strong> de 50 vagas preenchidas
+                    </div>
+                    <div className="slots-bar-bg">
+                      <div
+                        className={`slots-bar-fill ${isSlotsCritical ? 'critical' : ''}`}
+                        style={{ width: `${slotsPercentage}%` }}
+                      ></div>
+                    </div>
+                    {isSlotsCritical && <div className="slots-warning">Restam poucas vagas!</div>}
+                  </div>
+                ) : (
+                  <div className="slots-container" style={{ margin: '1rem 0' }}>
+                    <div className="slots-text">Acesso gratuito temporário</div>
+                  </div>
+                )}
+
+                <ul className="pricing-features" style={{ margin: '1rem 0 var(--space-md)' }}>
+                  <li>✅ 1 Perfil Individual</li>
+                  <li>✅ Diagnósticos e Plano de Ação</li>
+                  <li>✅ Dossiê Completo em PDF</li>
+                  <li>✅ Limite: 20 msgs/dia pós-relatório</li>
+                </ul>
+                <button onClick={onLoginClick} className="btn btn-primary pricing-btn">
+                  Garantir Teste Gratuito
+                </button>
+                <p className="pricing-note">Exclusivo para os 50 primeiros cadastros.</p>
               </div>
             )}
 
-            <ul className="pricing-features">
-              <li>✅ Consultoria via Chat IA Ilimitada</li>
-              <li>✅ Diagnósticos e Metas Personalizadas</li>
-              <li>✅ Exportação de Dossiê em PDF</li>
-              <li>✅ Até 3 Perfis Familiares</li>
-              <li>✅ Armazenamento em Nuvem Seguro</li>
-            </ul>
-            <button onClick={onLoginClick} className="btn btn-primary pricing-btn">
-              Garantir Meu Acesso Gratuito
-            </button>
-            <p className="pricing-note">Não exigimos cartão de crédito neste momento.</p>
+            {/* Plano Basic */}
+            <div className="pricing-card">
+              <div className="pricing-header">
+                <h3>Plano Basic</h3>
+                <div className="price" style={{ fontSize: '2.8rem' }}>R$ 59,90<span>/ano</span></div>
+              </div>
+              <p style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', margin: '-10px 0 15px 0' }}>ou até 6x no cartão de crédito</p>
+
+              <ul className="pricing-features" style={{ margin: '1.5rem 0' }}>
+                <li>✅ 1 Perfil Individual</li>
+                <li>✅ Diagnósticos e Metas por IA</li>
+                <li>✅ Dossiê Completo em PDF</li>
+                <li>✅ Limite: 40 msgs/dia pós-relatório</li>
+                <li>✅ Sincronização segura na nuvem</li>
+              </ul>
+              <button onClick={onLoginClick} className="btn btn-primary pricing-btn">
+                Começar Plano Basic
+              </button>
+              <p className="pricing-note">Ideal para organização financeira pessoal.</p>
+            </div>
+
+            {/* Plano Family */}
+            <div className="pricing-card featured">
+              <div className="pricing-badge">Mais Popular</div>
+              <div className="pricing-header">
+                <h3>Plano Family</h3>
+                <div className="price" style={{ fontSize: '2.8rem', color: 'var(--color-accent)' }}>R$ 79,90<span>/ano</span></div>
+              </div>
+              <p style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', margin: '-10px 0 15px 0' }}>ou até 10x no cartão de crédito</p>
+
+              <ul className="pricing-features" style={{ margin: '1.5rem 0' }}>
+                <li>✅ Até 3 Perfis Familiares</li>
+                <li>✅ Painel Consolidado Familiar</li>
+                <li>✅ Diagnósticos e Metas por IA</li>
+                <li>✅ Limite: 100 msgs/dia (pool compartilhado)</li>
+                <li>✅ Dossiê Completo em PDF para todos</li>
+              </ul>
+              <button onClick={onLoginClick} className="btn btn-primary pricing-btn" style={{ background: 'linear-gradient(135deg, var(--color-accent) 0%, #4f46e5 100%)' }}>
+                Começar Plano Family
+              </button>
+              <p className="pricing-note">A melhor escolha para planejar em família.</p>
+            </div>
           </div>
         </div>
       </section>

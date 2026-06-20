@@ -39,6 +39,7 @@ export async function loadProfiles(): Promise<Profile[]> {
     color: p.color,
     createdAt: p.created_at,
     allowFamilyView: p.allow_family_view,
+    reportGeneratedAt: p.report_generated_at,
   }));
 }
 
@@ -74,6 +75,7 @@ export async function saveProfile(profile: Partial<Profile> & { id?: string }): 
       color: data.color,
       createdAt: data.created_at,
       allowFamilyView: data.allow_family_view,
+      reportGeneratedAt: data.report_generated_at,
     };
   } else {
     // Insert
@@ -94,6 +96,7 @@ export async function saveProfile(profile: Partial<Profile> & { id?: string }): 
       color: data.color,
       createdAt: data.created_at,
       allowFamilyView: data.allow_family_view,
+      reportGeneratedAt: data.report_generated_at,
     };
   }
 }
@@ -469,5 +472,69 @@ export async function deleteAllUserData(): Promise<boolean> {
     return false;
   }
 }
+
+// ── Monetização e Assinaturas ────────────────────
+
+export interface SubscriptionData {
+  id: string;
+  plan_id: 'beta' | 'basic' | 'family';
+  status: 'trial' | 'active' | 'past_due' | 'canceled' | 'blocked';
+  trial_started_at: string | null;
+  trial_ends_at: string | null;
+  gateway: string | null;
+  gateway_subscription_id: string | null;
+  created_at: string;
+  plans?: {
+    name: string;
+    max_messages_post_report: number;
+    max_profiles: number;
+  };
+}
+
+export async function loadSubscription(): Promise<SubscriptionData | null> {
+  const { data, error } = await supabase
+    .from('subscriptions')
+    .select('*, plans:plans(*)')
+    .maybeSingle();
+
+  if (error) {
+    console.error('Erro ao carregar assinatura:', error);
+    return null;
+  }
+  return data as SubscriptionData;
+}
+
+export async function loadMessageUsageToday(): Promise<number> {
+  const userId = await getUserId();
+  if (!userId) return 0;
+
+  const todayStr = new Date().toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' }); // YYYY-MM-DD
+  const { data, error } = await supabase
+    .from('message_usage')
+    .select('message_count')
+    .eq('account_id', userId)
+    .eq('usage_date', todayStr)
+    .maybeSingle();
+
+  if (error || !data) return 0;
+  return data.message_count;
+}
+
+export async function markReportGenerated(profileId: string): Promise<string | null> {
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({ report_generated_at: now })
+    .eq('id', profileId)
+    .select('report_generated_at')
+    .single();
+
+  if (error) {
+    console.error('Erro ao marcar relatório como gerado:', error);
+    return null;
+  }
+  return data.report_generated_at;
+}
+
 
 

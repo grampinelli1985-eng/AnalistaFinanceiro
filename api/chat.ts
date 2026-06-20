@@ -1,16 +1,19 @@
-// Usamos o runtime Node.js padrão (não Edge — Edge Functions estão
-// descontinuadas). O Fluid Compute do Vercel já dá 300s de execução por
-// padrão em todos os planos, mas declaramos explicitamente 60s aqui como
-// um limite intencional e generoso para processar PDFs grandes via Gemini.
+import { createClient } from '@supabase/supabase-js';
+
+// Usamos o runtime Node.js padrão
 export const maxDuration = 60;
 
 declare const process: {
   env: {
     GEMINI_API_KEY?: string;
+    VITE_SUPABASE_URL?: string;
+    SUPABASE_SERVICE_ROLE_KEY?: string;
   };
 };
 
 const MODEL = 'gemini-2.5-flash';
+const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 const SYSTEM_PROMPT = `Você é um **Analista Financeiro Pessoal** experiente e direto. Seu papel é ajudar o usuário a organizar sua vida financeira com base em dados estruturados.
 
@@ -175,13 +178,79 @@ Essa divisão garante que nenhuma resposta seja cortada e que o usuário absorva
 ## REGRAS ABSOLUTAS E CÁLCULO FINANCEIRO
 1. NUNCA faça múltiplas perguntas na mesma mensagem — limite a 1 pergunta ou pedido de confirmação.
 2. Não adicione pressão ("estou esperando") para receber respostas. Peça polidamente.
-3. SEMPRE atualize a tag <financial_data> ao final da mensagem se houver um novo dado informado.
+3. SEMPRE atualize a tag <financial_data> ao final da mensagem se houver un novo dado informado.
 4. **CÁLCULOS FINANCEIROS**: O modelo JAMAIS deve realizar cálculos complexos (como o Saldo Mensal final, saldo de dívidas atualizado) "de cabeça" ou inseri-los no texto gerado, pois isso gera confusões.
 5. **A sua única função matemática é ATUALIZAR a estrutura do <financial_data>** refletindo fielmente os valores brutos fornecidos pelo usuário. Todo o cálculo de somas e saldo mensal é feito automaticamente pelo sistema (dashboard) a partir dos dados em JSON.
 6. Não tente "lembrar" ou ajustar saldos em mensagens futuras. Apenas garanta que o JSON reflete as categorias e dívidas exatamente como relatadas pelo usuário (inclua despesas diluídas, parcelamentos inteiros, etc. como valores parciais nas categorias corretas).
 7. MAPEAMENTO DE DÍVIDAS: Faturas de cartão vão no array "debts" (tipo "credit_card"). Valor da fatura atual em "monthlyPayment" e saldo total acumulado em "totalAmount". Parcelamentos vão como "other" com a parcela em "monthlyPayment". O sistema lidará com as somas automaticamente.
-8. MAPEAMENTO DE GASTOS SAZONAIS: IPVA, manutenção anual do carro (revisões, troca de pneus), seguro pago anualmente (se não for mensal), material escolar, e qualquer GASTO/DESPESA que ocorra uma ou poucas vezes por ano DEVEM ir no array "seasonalExpenses", com o valor ANUAL total em "annualAmount" e o mês aproximado em que ocorre em "monthDue" (1 = janeiro, 12 = dezembro). NÃO divida esse valor manualmente — o sistema dilui automaticamente por 12 para o cálculo mensal. Se o usuário informar seguro do carro ou de casa como mensalidade fixa (ex: "pago R$150/mês de seguro"), isso vai em "fixedExpenses.carInsurance" ou "fixedExpenses.homeInsurance" normalmente, não em "seasonalExpenses".
-9. ATENÇÃO CRÍTICA — NÃO CONFUNDA RENDA EVENTUAL COM DESPESA SAZONAL: o array "seasonalExpenses" é EXCLUSIVO para SAÍDAS de dinheiro (gastos). PLR, 13º salário, bônus, restituição de imposto de renda, e qualquer valor que o usuário RECEBE (não gasta) de forma eventual/anual são ENTRADAS e devem ir SEMPRE em "income.eventualBonus" (somado, se houver múltiplos valores desse tipo no mesmo período), NUNCA no array "seasonalExpenses". Antes de classificar qualquer valor mencionado pelo usuário, pergunte-se: "isso é dinheiro que ele recebe ou que ele paga?" — se for recebido, é renda (income); se for pago/gasto, é despesa (fixedExpenses, variableExpenses ou seasonalExpenses).`;
+8. MAPEAMENTO DE GASTOS SAZONAIS: IPVA, manutenção anual do carro (revisões, troca de pneus), seguro pago anualmente (se não for mensal), material escolar, e qualquer GASTO/DESPESA que ocorra uma ou poucas vezes por ano DEVEM ir no array "seasonalExpenses", com o valor ANUAL total em "annualAmount" e o mês aproximado em que ocorre em "monthDue" (1 = janeiro, 12 = dezembro). NÃO divida esse valor manualmente — o sistema dilui automaticamente por 12 para o cálculo mensal. Se o usuário informar seguro do carro ou de casa como mensalidade fixa (ex: "pago R$150/mês de seguro"), isso vai em "fixedExpenses.carInsurance" or "fixedExpenses.homeInsurance" normalmente, não em "seasonalExpenses".
+9. ATENÇÃO CRÍTICA — NÃO CONFUNDA RENDA EVENTUAL COM DESPESA SAZONAL: o array "seasonalExpenses" é EXCLUSIVO para SAÍDAS de dinheiro (gastos). PLR, 13º salário, bônus, restituição de imposto de renda, e qualquer valor que o usuário RECEBE (not gasta) de forma eventual/anual são ENTRADAS e devem ir SEMPRE em "income.eventualBonus" (somado, se houver múltiplos valores desse tipo no mesmo período), NUNCA no array "seasonalExpenses". Antes de classificar qualquer valor mencionado pelo usuário, pergunte-se: "isso é dinheiro que ele recebe ou que ele paga?" — se for recebido, é renda (income); se for pago/gasto, é despesa (fixedExpenses, variableExpenses ou seasonalExpenses).`;
+
+async function getAuthUser(req: Request) {
+  if (!supabaseUrl || !serviceKey) return null;
+  const supabase = createClient(supabaseUrl, serviceKey);
+
+  const authHeader = req.headers.get('Authorization') || '';
+  const token = authHeader.replace('Bearer ', '').trim();
+  
+  if (!token) return null;
+  
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) return null;
+  return user;
+}
+
+async function resolveUserSubscription(supabase: any, userId: string) {
+  // Buscar assinatura atual do usuário
+  const { data: subscription, error } = await supabase
+    .from('subscriptions')
+    .select('*, plans(*)')
+    .eq('account_id', userId)
+    .maybeSingle();
+
+  if (subscription) {
+    return subscription;
+  }
+
+  // Se não existir, tenta alocar no Beta Trial se houver vagas
+  const { data: seats } = await supabase
+    .from('beta_seats')
+    .select('*')
+    .eq('id', 1)
+    .single();
+
+  let assignedPlan = 'basic';
+  let status = 'blocked';
+  let trialStart = null;
+  let trialEnd = null;
+
+  if (seats && seats.seats_taken < seats.seats_limit) {
+    // Alocar vaga no Beta
+    await supabase
+      .from('beta_seats')
+      .update({ seats_taken: seats.seats_taken + 1 })
+      .eq('id', 1);
+
+    assignedPlan = 'beta';
+    status = 'trial';
+    trialStart = new Date().toISOString();
+    trialEnd = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
+  }
+
+  const { data: newSub } = await supabase
+    .from('subscriptions')
+    .insert([{
+      account_id: userId,
+      plan_id: assignedPlan,
+      status,
+      trial_started_at: trialStart,
+      trial_ends_at: trialEnd
+    }])
+    .select('*, plans(*)')
+    .single();
+
+  return newSub;
+}
 
 export async function POST(req: Request) {
   if (req.method !== 'POST') {
@@ -192,7 +261,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { messages: allMessages, financialData } = await req.json();
+    const { messages: allMessages, financialData, profileId } = await req.json();
 
     if (!allMessages || !Array.isArray(allMessages)) {
       return new Response(JSON.stringify({ error: 'Messages are required and must be an array' }), {
@@ -200,17 +269,6 @@ export async function POST(req: Request) {
         headers: { 'Content-Type': 'application/json' },
       });
     }
-
-    // Proteção defensiva contra payload grande: mantém só as mensagens mais
-    // recentes do histórico. O financialData já carrega o estado persistido
-    // (renda, despesas, dívidas), então turnos muito antigos da conversa não
-    // são essenciais para a IA continuar — isso evita que conversas longas
-    // (especialmente com múltiplos documentos resumidos) eventualmente
-    // ultrapassem o limite de payload de 4.5MB do Vercel (erro 413).
-    const MAX_HISTORY_MESSAGES = 40;
-    const messages = allMessages.length > MAX_HISTORY_MESSAGES
-      ? allMessages.slice(-MAX_HISTORY_MESSAGES)
-      : allMessages;
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -220,16 +278,128 @@ export async function POST(req: Request) {
       });
     }
 
+    // --- SISTEMA DE ASSINATURA E VERIFICAÇÃO DE USO ---
+    let isBlocked = false;
+    let blockReason: 'blocked' | 'expired' | 'past_due_expired' | 'limit_reached' | null = null;
+    let blockMessage = '';
+    let messagesRemainingToday: number | null = null;
+    let planName = 'Grátis';
+
+    const user = await getAuthUser(req);
+    const supabase = (supabaseUrl && serviceKey) ? createClient(supabaseUrl, serviceKey) : null;
+    const todayStr = new Date().toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' }); // formato YYYY-MM-DD
+
+    if (user && supabase) {
+      const sub = await resolveUserSubscription(supabase, user.id);
+      
+      if (sub) {
+        planName = sub.plans?.name || 'Basic';
+
+        // 1. Verificar se assinatura foi bloqueada diretamente
+        if (sub.status === 'blocked') {
+          isBlocked = true;
+          blockReason = 'blocked';
+          blockMessage = 'Seu acesso está suspenso. Faça o upgrade ou regularize sua assinatura para continuar organizando suas finanças.';
+        }
+        
+        // 2. Verificar se o período de teste BETA expirou (90 dias)
+        if (sub.status === 'trial' && sub.trial_ends_at) {
+          const trialEnds = new Date(sub.trial_ends_at);
+          if (trialEnds < new Date()) {
+            // Atualiza status para blocked no banco
+            await supabase
+              .from('subscriptions')
+              .update({ status: 'blocked', updated_at: new Date().toISOString() })
+              .eq('id', sub.id);
+            
+            isBlocked = true;
+            blockReason = 'expired';
+            blockMessage = 'Seu período de teste gratuito de 90 dias do plano BETA expirou. Faça o upgrade agora para um plano pago para liberar o chat.';
+          }
+        }
+
+        // 3. Verificar se pagamento está atrasado além da tolerância de 3 dias
+        if (sub.status === 'past_due') {
+          const pastDueSince = new Date(sub.updated_at || sub.created_at);
+          const gracePeriodMs = 3 * 24 * 60 * 60 * 1000;
+          if (Date.now() - pastDueSince.getTime() > gracePeriodMs) {
+            // Atualiza status para blocked
+            await supabase
+              .from('subscriptions')
+              .update({ status: 'blocked', updated_at: new Date().toISOString() })
+              .eq('id', sub.id);
+
+            isBlocked = true;
+            blockReason = 'past_due_expired';
+            blockMessage = 'Sua assinatura está atrasada há mais de 3 dias. O acesso ao chat foi temporariamente bloqueado até a confirmação do pagamento.';
+          }
+        }
+
+        // 4. Verificar limite de mensagens diário pós-relatório
+        if (!isBlocked && profileId) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('report_generated_at')
+            .eq('id', profileId)
+            .maybeSingle();
+
+          if (profile && profile.report_generated_at) {
+            // O relatório já foi gerado para este perfil -> Limites diários ativos
+            const { data: usage } = await supabase
+              .from('message_usage')
+              .select('message_count')
+              .eq('account_id', user.id)
+              .eq('usage_date', todayStr)
+              .maybeSingle();
+
+            const limit = sub.plans?.max_messages_post_report || 20;
+            const currentCount = usage?.message_count || 0;
+
+            if (currentCount >= limit) {
+              isBlocked = true;
+              blockReason = 'limit_reached';
+              blockMessage = 'Você atingiu seu limite diário de hoje. Volte amanhã para continuar sua jornada de organização financeira.';
+              messagesRemainingToday = 0;
+            } else {
+              messagesRemainingToday = limit - currentCount;
+            }
+          }
+        }
+      }
+    }
+
+    // Se estiver bloqueado por qualquer regra, retorna a resposta com o bloqueio e formata o texto para o usuário
+    if (isBlocked) {
+      return new Response(JSON.stringify({
+        content: blockMessage,
+        financialData: null,
+        blocked: true,
+        blockReason,
+        messagesRemainingToday: messagesRemainingToday ?? 0
+      }), {
+        status: 200, // 200 para permitir que o frontend parseie sem erros de requisição
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Proteção defensiva contra payload grande: mantém só as mensagens mais recentes
+    const MAX_HISTORY_MESSAGES = 40;
+    const messages = allMessages.length > MAX_HISTORY_MESSAGES
+      ? allMessages.slice(-MAX_HISTORY_MESSAGES)
+      : allMessages;
+
     let systemContext = SYSTEM_PROMPT;
     if (financialData) {
       systemContext += `\n\n## DADOS FINANCEIROS ATUAIS DO USUÁRIO (já coletados anteriormente)\n\`\`\`json\n${JSON.stringify(financialData, null, 2)}\n\`\`\`\nUse esses dados como contexto para continuar a conversa.`;
     }
+    
+    // Injeta o contexto de mensagens restantes no prompt do sistema
+    if (typeof messagesRemainingToday === 'number') {
+      systemContext += `\n\n## DIRETRIZ DE DIÁLOGO E MONETIZAÇÃO
+O usuário está no plano ${planName}. Ele possui exatamente ${messagesRemainingToday} mensagens restantes hoje (pós-diagnóstico).
+Mencione isso ocasionalmente de forma natural se aplicável (ex: "Temos mais ${messagesRemainingToday} mensagens hoje para ajustar seu orçamento..."). Faça com que isso pareça um checkpoint acolhedor do dia, incentivando o foco nas decisões práticas de forma positiva.`;
+    }
 
-    // NOTA: anexos de PDF não passam mais por esta rota. O processamento
-    // de documentos é feito por /api/process-document, que retorna um
-    // resumo em texto já inserido como mensagem normal no histórico.
-    // Isso evita o erro 413 (payload too large) que ocorria quando o PDF
-    // em base64 era reenviado junto com o histórico em toda chamada de chat.
     let apiMessages = messages
       .filter((m: any) => !m.isTyping)
       .map((m: any) => {
@@ -237,7 +407,6 @@ export async function POST(req: Request) {
         if (m.role === 'assistant') role = "model";
         return { role, parts: [{ text: m.content }] };
       });
-
 
     // Garante que o histórico comece com user e alterne estritamente
     const normalizedMessages: any[] = [];
@@ -289,7 +458,7 @@ export async function POST(req: Request) {
     const data = await response.json();
     const rawContent: string = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
-    // Helper para limpar formatação de JSON vindo da IA (removendo comentários, blocos markdown e vírgulas extras)
+    // Helper para limpar formatação de JSON vindo da IA
     function cleanJsonString(str: string): string {
       let cleaned = str.trim();
       cleaned = cleaned.replace(/```[a-zA-Z]*\n?/gi, '').replace(/```/g, '').trim();
@@ -315,22 +484,55 @@ export async function POST(req: Request) {
       }
     }
 
-    // Remove o bloco <financial_data>...</financial_data> da mensagem visível.
-    // Usa replace com tag de abertura e fechamento pra não cortar conteúdo que
-    // vem DEPOIS do bloco. Se a tag de fechamento estiver ausente (resposta cortada),
-    // remove a partir da abertura até o final como fallback.
+    // Remove o bloco <financial_data>...</financial_data> da mensagem visível
     let cleanContent = rawContent
       .replace(/<financial_data>[\s\S]*?<\/financial_data>/gi, '')
       .trim();
     
-    // Fallback: se ainda tiver <financial_data> sem fechamento, remove o resto
     if (/<financial_data>/i.test(cleanContent)) {
       cleanContent = cleanContent.replace(/<financial_data>[\s\S]*/gi, '').trim();
+    }
+
+    // --- INCREMENTAR CONTADOR DE USO DE MENSAGENS (PÓS-RELATÓRIO) ---
+    if (user && supabase && profileId) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('report_generated_at')
+        .eq('id', profileId)
+        .maybeSingle();
+
+      if (profile && profile.report_generated_at) {
+        // Incrementar o uso diário no banco
+        const { data: usage } = await supabase
+          .from('message_usage')
+          .select('*')
+          .eq('account_id', user.id)
+          .eq('usage_date', todayStr)
+          .maybeSingle();
+
+        if (usage) {
+          await supabase
+            .from('message_usage')
+            .update({ message_count: usage.message_count + 1 })
+            .eq('account_id', user.id)
+            .eq('usage_date', todayStr);
+        } else {
+          await supabase
+            .from('message_usage')
+            .insert([{ account_id: user.id, usage_date: todayStr, message_count: 1 }]);
+        }
+
+        if (typeof messagesRemainingToday === 'number') {
+          messagesRemainingToday = Math.max(0, messagesRemainingToday - 1);
+        }
+      }
     }
 
     return new Response(JSON.stringify({
       content: cleanContent,
       financialData: extractedFinancialData,
+      blocked: false,
+      messagesRemainingToday
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },

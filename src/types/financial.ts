@@ -141,6 +141,7 @@ export interface Profile {
   color: string;        // hex color
   createdAt: string;
   allowFamilyView: boolean;
+  reportGeneratedAt?: string | null;
 }
 
 export interface GlobalConfig {

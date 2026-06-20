@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import type { FinancialData, FinancialBalance, MonthlySnapshot } from '../types/financial';
 import { HEALTH_LEVELS } from '../types/financial';
 import { formatCurrency, formatPercent, classifyCommitmentIndex } from '../utils/formatters';
+import type { SubscriptionData } from '../services/storageService';
 import ChartsPanel from './ChartsPanel';
 
 interface SidePanelProps {
@@ -16,6 +17,9 @@ interface SidePanelProps {
   onResetData: () => void;
   onSyncData?: () => void;
   className?: string;
+  subscription?: SubscriptionData | null;
+  messagesRemaining?: number | null;
+  onUpgradeClick?: () => void;
 }
 
 type TabType = 'resumo' | 'graficos' | 'historico';
@@ -28,6 +32,9 @@ const SidePanel: React.FC<SidePanelProps> = ({
   onResetData,
   onSyncData,
   className = '',
+  subscription = null,
+  messagesRemaining = null,
+  onUpgradeClick,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('resumo');
 
@@ -82,6 +89,77 @@ const SidePanel: React.FC<SidePanelProps> = ({
               </div>
             ) : (
               <>
+                {/* Card de Progresso da Jornada (Retenção) */}
+                <div className="card" style={{ background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(15, 23, 42, 0.2) 100%)', border: '1px solid rgba(99, 102, 241, 0.2)', marginBottom: 'var(--space-md)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-accent)', letterSpacing: '0.5px' }}>🎯 JORNADA FINANCEIRA</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>Etapa 1 de 3</span>
+                  </div>
+                  <strong style={{ display: 'block', fontSize: '0.9rem', marginBottom: '8px', color: 'var(--color-text-primary)' }}>Mês 1: Revisão de Gastos Fixos</strong>
+                  <div className="commitment-bar-track" style={{ height: '6px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '3px', marginBottom: '12px' }}>
+                    <div 
+                      className="commitment-bar-fill" 
+                      style={{ width: '33%', background: 'linear-gradient(90deg, var(--color-accent), #4f46e5)', height: '100%', borderRadius: '3px' }} 
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ color: 'var(--color-healthy)' }}>✓</span>
+                      <span>Dados iniciais coletados e analisados</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>⏳</span>
+                      <span>Plano de ação ativado (Acompanhamento Mês 1)</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.5 }}>
+                      <span>🔒</span>
+                      <span>Mês 2: Reserva de Emergência (Em 30 dias)</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Card de Assinatura e Monetização */}
+                {subscription && (
+                  <div className="card" style={{ background: 'rgba(255, 255, 255, 0.01)', border: '1px solid var(--color-border)', marginBottom: 'var(--space-md)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-secondary)', letterSpacing: '0.5px' }}>💳 PLANO ATIVO</span>
+                      <span 
+                        style={{ 
+                          fontSize: '0.75rem', 
+                          fontWeight: 'bold',
+                          color: subscription.status === 'trial' ? 'var(--color-accent)' : subscription.status === 'active' ? 'var(--color-healthy)' : 'var(--color-critical)',
+                          textTransform: 'uppercase'
+                        }}
+                      >
+                        {subscription.status === 'trial' ? 'Teste (BETA)' : subscription.status === 'active' ? 'Ativo' : 'Atenção'}
+                      </span>
+                    </div>
+                    <strong style={{ display: 'block', fontSize: '1rem', marginBottom: '4px', color: 'var(--color-text-primary)' }}>
+                      {subscription.plans?.name || 'Beta Trial'}
+                    </strong>
+                    {subscription.status === 'trial' && subscription.trial_ends_at && (
+                      <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '8px' }}>
+                        Expira em: {new Date(subscription.trial_ends_at).toLocaleDateString('pt-BR')}
+                      </span>
+                    )}
+                    {typeof messagesRemaining === 'number' && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', marginTop: '6px', padding: '6px 8px', background: 'rgba(255,255,255,0.02)', borderRadius: '6px' }}>
+                        <span>Mensagens restantes hoje:</span>
+                        <strong style={{ color: messagesRemaining === 0 ? 'var(--color-critical)' : 'var(--color-healthy)' }}>{messagesRemaining}</strong>
+                      </div>
+                    )}
+                    {subscription.plan_id !== 'family' && onUpgradeClick && (
+                      <button 
+                        onClick={onUpgradeClick}
+                        className="btn btn-ghost"
+                        style={{ width: '100%', padding: '6px 12px', fontSize: '0.8rem', marginTop: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', color: 'var(--color-accent)', borderColor: 'var(--color-accent)' }}
+                      >
+                        🚀 Fazer Upgrade / Assinar
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 {/* Saldo mensal em destaque */}
                 <div className={`balance-highlight ${balance.monthlyBalance >= 0 ? 'positive' : 'negative'}`}>
                   <div className="balance-highlight-label">Saldo Mensal</div>

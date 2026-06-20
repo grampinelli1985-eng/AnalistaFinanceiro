@@ -5,6 +5,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import type { Message, MessageAttachment } from '../types/financial';
 import MessageBubble from './MessageBubble';
+import UpgradeOverlay from './UpgradeOverlay';
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 
@@ -15,6 +16,10 @@ interface ChatPanelProps {
   onClearChat: () => void;
   onResetData: () => void;
   className?: string;
+  isBlocked?: boolean;
+  blockReason?: 'limit_reached' | 'expired' | 'blocked' | 'past_due_expired' | null;
+  onUpgradeClick?: () => void;
+  planName?: string;
 }
 
 const ChatPanel: React.FC<ChatPanelProps> = ({
@@ -24,6 +29,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   onClearChat,
   onResetData,
   className = '',
+  isBlocked = false,
+  blockReason = null,
+  onUpgradeClick,
+  planName = 'BETA',
 }) => {
   const [inputValue, setInputValue] = useState('');
   const [pendingAttachment, setPendingAttachment] = useState<MessageAttachment | null>(null);
@@ -164,156 +173,167 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Área de Input */}
-      <div className="chat-input-area">
-        {pendingAttachment && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '6px 10px',
-              marginBottom: '8px',
-              background: 'rgba(99, 102, 241, 0.08)',
-              border: '1px solid var(--color-border)',
-              borderRadius: '8px',
-              fontSize: '0.8rem',
-              width: 'fit-content',
-            }}
-          >
-            <span>📄 {pendingAttachment.fileName}</span>
+      {/* Área de Input ou Bloco de Upgrade */}
+      {isBlocked ? (
+        <div style={{ padding: 'var(--space-md) var(--space-lg)' }}>
+          <UpgradeOverlay
+            reason={blockReason}
+            limit={planName === 'Beta Trial' ? 20 : planName === 'Plano Basic' ? 40 : 100}
+            onUpgradeClick={onUpgradeClick || (() => {})}
+            planName={planName}
+          />
+        </div>
+      ) : (
+        <div className="chat-input-area">
+          {pendingAttachment && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px 10px',
+                marginBottom: '8px',
+                background: 'rgba(99, 102, 241, 0.08)',
+                border: '1px solid var(--color-border)',
+                borderRadius: '8px',
+                fontSize: '0.8rem',
+                width: 'fit-content',
+              }}
+            >
+              <span>📄 {pendingAttachment.fileName}</span>
+              <button
+                type="button"
+                onClick={() => setPendingAttachment(null)}
+                aria-label="Remover anexo"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--color-text-secondary)',
+                  fontSize: '0.9rem',
+                  padding: 0,
+                  lineHeight: 1,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
+          {attachmentError && (
+            <p className="modal-error" role="alert" style={{ fontSize: '0.75rem', marginBottom: '8px' }}>
+              ⚠️ {attachmentError}
+            </p>
+          )}
+          <div className="chat-input-wrapper">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf"
+              onChange={handleFileSelect}
+              style={{ display: 'none' }}
+              aria-hidden="true"
+            />
             <button
               type="button"
-              onClick={() => setPendingAttachment(null)}
-              aria-label="Remover anexo"
+              className="chat-attach-btn"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isLoading || isProcessingDocument}
+              aria-label="Anexar fatura ou extrato em PDF"
+              title="Anexar PDF (fatura/extrato)"
               style={{
                 background: 'none',
                 border: 'none',
-                cursor: 'pointer',
+                cursor: (isLoading || isProcessingDocument) ? 'not-allowed' : 'pointer',
                 color: 'var(--color-text-secondary)',
-                fontSize: '0.9rem',
-                padding: 0,
+                padding: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: (isLoading || isProcessingDocument) ? 0.5 : 1,
+                fontSize: '1.4rem',
                 lineHeight: 1,
+                width: '36px',
+                height: '36px',
+                flexShrink: 0,
               }}
             >
-              ✕
+              📎
+            </button>
+            <textarea
+              ref={textareaRef}
+              id="chat-input"
+              className="chat-textarea"
+              placeholder={isProcessingDocument ? 'Lendo o documento...' : 'Digite sua resposta...'}
+              value={inputValue}
+              onChange={handleTextareaChange}
+              onKeyDown={handleKeyDown}
+              rows={1}
+              disabled={isLoading || isProcessingDocument}
+              aria-label="Campo de mensagem"
+            />
+            <button
+              id="chat-send-btn"
+              className="chat-send-btn"
+              onClick={handleSend}
+              disabled={(!inputValue.trim() && !pendingAttachment) || isLoading || isProcessingDocument}
+              aria-label="Enviar mensagem"
+              title="Enviar (Enter)"
+            >
+              {(isLoading || isProcessingDocument) ? (
+                <span className="spinner" style={{ width: 16, height: 16 }} />
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+              )}
             </button>
           </div>
-        )}
-        {attachmentError && (
-          <p className="modal-error" role="alert" style={{ fontSize: '0.75rem', marginBottom: '8px' }}>
-            ⚠️ {attachmentError}
-          </p>
-        )}
-        <div className="chat-input-wrapper">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="application/pdf"
-            onChange={handleFileSelect}
-            style={{ display: 'none' }}
-            aria-hidden="true"
-          />
-          <button
-            type="button"
-            className="chat-attach-btn"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isLoading || isProcessingDocument}
-            aria-label="Anexar fatura ou extrato em PDF"
-            title="Anexar PDF (fatura/extrato)"
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: (isLoading || isProcessingDocument) ? 'not-allowed' : 'pointer',
-              color: 'var(--color-text-secondary)',
-              padding: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              opacity: (isLoading || isProcessingDocument) ? 0.5 : 1,
-              fontSize: '1.4rem',
-              lineHeight: 1,
-              width: '36px',
-              height: '36px',
-              flexShrink: 0,
+          {isProcessingDocument && (
+            <p style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: '6px' }}>
+              📄 Lendo seu documento, isso pode levar alguns segundos...
+            </p>
+          )}
+          <div className="chat-hint">
+            Pressione <strong>Enter</strong> para enviar · <strong>Shift+Enter</strong> para nova linha
+            {messages.length > 2 && (
+              <span style={{ marginLeft: '8px' }}>
+                <span
+                  style={{ cursor: 'pointer', color: 'var(--color-text-muted)', textDecoration: 'underline' }}
+                  onClick={onClearChat}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => e.key === 'Enter' && onClearChat()}
+                >
+                  · Reiniciar conversa
+                </span>
+                <span style={{ margin: '0 8px', color: 'var(--color-text-muted)', opacity: 0.5 }}>|</span>
+                <span
+                  style={{ cursor: 'pointer', color: 'var(--color-critical)', textDecoration: 'underline' }}
+                  onClick={onResetData}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => e.key === 'Enter' && onResetData()}
+                >
+                  Nova Análise (Zerar tudo)
+                </span>
+              </span>
+            )}
+          </div>
+          <div 
+            className="chat-disclaimer" 
+            style={{ 
+              fontSize: '0.7rem', 
+              color: 'var(--color-text-muted)', 
+              textAlign: 'center', 
+              marginTop: '6px', 
+              opacity: 0.8 
             }}
           >
-            📎
-          </button>
-          <textarea
-            ref={textareaRef}
-            id="chat-input"
-            className="chat-textarea"
-            placeholder={isProcessingDocument ? 'Lendo o documento...' : 'Digite sua resposta...'}
-            value={inputValue}
-            onChange={handleTextareaChange}
-            onKeyDown={handleKeyDown}
-            rows={1}
-            disabled={isLoading || isProcessingDocument}
-            aria-label="Campo de mensagem"
-          />
-          <button
-            id="chat-send-btn"
-            className="chat-send-btn"
-            onClick={handleSend}
-            disabled={(!inputValue.trim() && !pendingAttachment) || isLoading || isProcessingDocument}
-            aria-label="Enviar mensagem"
-            title="Enviar (Enter)"
-          >
-            {(isLoading || isProcessingDocument) ? (
-              <span className="spinner" style={{ width: 16, height: 16 }} />
-            ) : (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="22" y1="2" x2="11" y2="13" />
-                <polygon points="22 2 15 22 11 13 2 9 22 2" />
-              </svg>
-            )}
-          </button>
+            ⚠️ Análises geradas por IA. Não constituem aconselhamento financeiro profissional.
+          </div>
         </div>
-        {isProcessingDocument && (
-          <p style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: '6px' }}>
-            📄 Lendo seu documento, isso pode levar alguns segundos...
-          </p>
-        )}
-        <div className="chat-hint">
-          Pressione <strong>Enter</strong> para enviar · <strong>Shift+Enter</strong> para nova linha
-          {messages.length > 2 && (
-            <span style={{ marginLeft: '8px' }}>
-              <span
-                style={{ cursor: 'pointer', color: 'var(--color-text-muted)', textDecoration: 'underline' }}
-                onClick={onClearChat}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => e.key === 'Enter' && onClearChat()}
-              >
-                · Reiniciar conversa
-              </span>
-              <span style={{ margin: '0 8px', color: 'var(--color-text-muted)', opacity: 0.5 }}>|</span>
-              <span
-                style={{ cursor: 'pointer', color: 'var(--color-critical)', textDecoration: 'underline' }}
-                onClick={onResetData}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => e.key === 'Enter' && onResetData()}
-              >
-                Nova Análise (Zerar tudo)
-              </span>
-            </span>
-          )}
-        </div>
-        <div 
-          className="chat-disclaimer" 
-          style={{ 
-            fontSize: '0.7rem', 
-            color: 'var(--color-text-muted)', 
-            textAlign: 'center', 
-            marginTop: '6px', 
-            opacity: 0.8 
-          }}
-        >
-          ⚠️ Análises geradas por IA. Não constituem aconselhamento financeiro profissional.
-        </div>
-      </div>
+      )}
     </div>
   );
 };

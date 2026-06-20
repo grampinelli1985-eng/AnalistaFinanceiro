@@ -6,6 +6,7 @@
 // Esse arquivo só cuida da comunicação entre o frontend e essa rota.
 // ==========================================
 
+import { supabase } from '../lib/supabase';
 import type { Message, FinancialData } from '../types/financial';
 
 // ──────────────────────────────────────────
@@ -15,19 +16,30 @@ import type { Message, FinancialData } from '../types/financial';
 export interface AIResponse {
   content: string;
   financialData: string | null;
+  blocked?: boolean;
+  blockReason?: 'limit_reached' | 'expired' | 'blocked' | 'past_due_expired' | null;
+  messagesRemainingToday?: number | null;
 }
 
 export async function sendMessage(
   messages: Message[],
-  financialData?: FinancialData | null
+  financialData?: FinancialData | null,
+  profileId?: string
 ): Promise<AIResponse> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  
+  if (session?.access_token) {
+    headers['Authorization'] = `Bearer ${session.access_token}`;
+  }
+
   // Chamada exclusiva para a Rota de API Serverless do Vercel
   const response = await fetch('/api/chat', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ messages, financialData }),
+    headers,
+    body: JSON.stringify({ messages, financialData, profileId }),
   });
 
   if (response.ok) {
