@@ -44,13 +44,30 @@ const featuresList = [
 const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
   const [isSticky, setIsSticky] = useState(false);
   const [showExitPopup, setShowExitPopup] = useState(false);
-  const [betaSlotsUsed] = useState(73); // Mock value
+  const [betaSlotsUsed, setBetaSlotsUsed] = useState<number | null>(null);
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
   const [exitEmail, setExitEmail] = useState('');
   const [exitSuccess, setExitSuccess] = useState(false);
   const [currentFeatureSlide, setCurrentFeatureSlide] = useState(0);
   const [isHoveringCarousel, setIsHoveringCarousel] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Busca a contagem REAL de perfis cadastrados, para mostrar a ocupação
+  // verdadeira do Beta (não um número fictício). Se a chamada falhar por
+  // qualquer motivo, betaSlotsUsed permanece null e a seção de vagas é
+  // simplesmente ocultada — nunca mostramos um número inventado.
+  useEffect(() => {
+    fetch('/api/beta-slots')
+      .then((res) => res.json())
+      .then((data) => {
+        if (typeof data.count === 'number') {
+          setBetaSlotsUsed(data.count);
+        }
+      })
+      .catch(() => {
+        // Falha silenciosa — a seção de vagas simplesmente não aparece
+      });
+  }, []);
 
   const nextFeature = () => {
     setCurrentFeatureSlide((prev) => (prev + 1) % featuresList.length);
@@ -134,8 +151,8 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
     setOpenFaqIndex(openFaqIndex === index ? null : index);
   };
 
-  const slotsPercentage = (betaSlotsUsed / 100) * 100;
-  const isSlotsCritical = slotsPercentage >= 70;
+  const slotsPercentage = betaSlotsUsed !== null ? Math.min((betaSlotsUsed / 100) * 100, 100) : 0;
+  const isSlotsCritical = betaSlotsUsed !== null && slotsPercentage >= 70;
 
   return (
     <div className="landing-container" ref={containerRef}>
@@ -179,14 +196,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
 
           {/* Social Proof Hero */}
           <div className="hero-social-proof">
-            <div className="avatar-group">
-              <div className="avatar avatar-1"></div>
-              <div className="avatar avatar-2"></div>
-              <div className="avatar avatar-3"></div>
-              <div className="avatar avatar-4"></div>
-              <div className="avatar avatar-5"></div>
-            </div>
-            <span>+847 pessoas já iniciaram seu plano de quitação</span>
+            <span>🚀 Programa Beta gratuito — seja um dos primeiros a usar</span>
           </div>
         </div>
 
@@ -334,40 +344,34 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
 
       {/* Testimonials */}
       <section className="testimonials-section">
-        <h2>O que as pessoas estão dizendo</h2>
+        <h2>Por que confiar no Analista IA?</h2>
         <div className="testimonials-grid">
           <div className="testimonial-card">
             <div className="testimonial-header">
-              <div className="testimonial-avatar" style={{ background: '#8b5cf6' }}>MC</div>
+              <div className="testimonial-avatar" style={{ background: '#8b5cf6' }}>🔍</div>
               <div>
-                <div className="stars">★★★★★</div>
-                <div className="testimonial-author">— Mariana C., Designer · Quitou 2 cartões em 4 meses</div>
+                <div className="testimonial-author">Transparência desde o início</div>
               </div>
             </div>
-            <p>"Eu fugia das minhas faturas do cartão porque me davam ansiedade. O Analista IA pegou na minha mão, fez as contas que eu tinha medo de fazer e me deu um plano claro."</p>
-            <div className="verified-badge">✓ Resultado verificado pelo Analista IA</div>
+            <p>Somos um produto novo, em fase Beta. Não temos centenas de depoimentos ainda — preferimos ser honestos sobre isso do que inventar números. O que oferecemos é uma metodologia clara: cálculo real de juros, comprometimento de renda e plano de quitação baseado nos seus dados.</p>
           </div>
           <div className="testimonial-card">
             <div className="testimonial-header">
-              <div className="testimonial-avatar" style={{ background: '#3b82f6' }}>RA</div>
+              <div className="testimonial-avatar" style={{ background: '#3b82f6' }}>🧮</div>
               <div>
-                <div className="stars">★★★★★</div>
-                <div className="testimonial-author">— Roberto A., Engenheiro · Cortou 30% em supérfluos</div>
+                <div className="testimonial-author">Matemática, não promessa vazia</div>
               </div>
             </div>
-            <p>"Nunca consegui usar aqueles apps cheios de gráficos confusos. Aqui eu literalmente mando um 'gastei 200 no mercado' e a IA cuida de atualizar meu balanço. Genial."</p>
-            <div className="verified-badge">✓ Resultado verificado pelo Analista IA</div>
+            <p>Cada recomendação é baseada em cálculos financeiros verificáveis — taxa de juros, índice de comprometimento de renda, métodos consagrados de quitação de dívidas (Avalanche e Bola de Neve). Sem fórmulas mágicas.</p>
           </div>
           <div className="testimonial-card">
             <div className="testimonial-header">
-              <div className="testimonial-avatar" style={{ background: '#059669' }}>LF</div>
+              <div className="testimonial-avatar" style={{ background: '#059669' }}>🔒</div>
               <div>
-                <div className="stars">★★★★★</div>
-                <div className="testimonial-author">— Lucas F., Autônomo · Construiu reserva de 4 meses</div>
+                <div className="testimonial-author">Seus dados, sua privacidade</div>
               </div>
             </div>
-            <p>"O diagnóstico em PDF que a ferramenta gera foi o que me abriu os olhos. Vi que gastava 40% da minha renda com besteiras não planejadas."</p>
-            <div className="verified-badge">✓ Resultado verificado pelo Analista IA</div>
+            <p>Não pedimos acesso à sua conta bancária nem senhas. Você só informa o que quiser, no seu ritmo, e os dados ficam protegidos e visíveis apenas para você.</p>
           </div>
         </div>
       </section>
@@ -375,12 +379,12 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
       {/* Before & After Section */}
       <section className="before-after-section">
         <div className="section-header">
-          <h2>De R$18.000 em dívidas a R$900/mês investidos</h2>
-          <p>Veja como o Analista IA transformou a realidade de uma família real.</p>
+          <h2>Exemplo: de R$18.000 em dívidas a R$900/mês investidos</h2>
+          <p>Veja, de forma ilustrativa, como a metodologia do Analista IA estrutura essa transformação ao longo de 6 meses.</p>
         </div>
         <div className="ba-container">
           <div className="ba-card ba-before">
-            <div className="ba-label">Situação em Janeiro</div>
+            <div className="ba-label">Situação inicial</div>
             <div className="ba-icon">⚠️</div>
             <ul className="ba-stats">
               <li><span>Dívida total:</span> R$ 18.400</li>
@@ -390,7 +394,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
             </ul>
           </div>
           <div className="ba-card ba-after">
-            <div className="ba-label">Situação em Julho (6 meses)</div>
+            <div className="ba-label">Após 6 meses de plano</div>
             <div className="ba-icon">✓</div>
             <ul className="ba-stats">
               <li><span>Dívida restante:</span> R$ 6.200 (−66%)</li>
@@ -400,13 +404,12 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
             </ul>
           </div>
         </div>
-        <div className="ba-quote">
-          <blockquote>"Nunca pensei que em 6 meses eu teria dinheiro sobrando no fim do mês."</blockquote>
-          <cite>— João M., Técnico de TI, São Paulo</cite>
-        </div>
+        <p style={{ textAlign: 'center', fontSize: '0.8rem', opacity: 0.6, marginTop: '8px' }}>
+          *Exemplo ilustrativo da metodologia, não um resultado garantido. Seus resultados dependem da sua situação financeira real.
+        </p>
         <div className="ba-cta">
           <button onClick={onLoginClick} className="btn btn-primary hero-btn">
-            Quero minha transformação →
+            Quero montar meu plano →
           </button>
         </div>
       </section>
@@ -444,19 +447,25 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
               <div className="price">Grátis<span>/vitalício para os 100 primeiros</span></div>
             </div>
 
-            {/* Progress Bar */}
-            <div className="slots-container">
-              <div className="slots-text">
-                <strong>{betaSlotsUsed}</strong> de 100 vagas preenchidas
+            {/* Progress Bar — só exibido quando temos a contagem REAL */}
+            {betaSlotsUsed !== null ? (
+              <div className="slots-container">
+                <div className="slots-text">
+                  <strong>{betaSlotsUsed}</strong> de 100 vagas preenchidas
+                </div>
+                <div className="slots-bar-bg">
+                  <div
+                    className={`slots-bar-fill ${isSlotsCritical ? 'critical' : ''}`}
+                    style={{ width: `${slotsPercentage}%` }}
+                  ></div>
+                </div>
+                {isSlotsCritical && <div className="slots-warning">Vagas limitadas!</div>}
               </div>
-              <div className="slots-bar-bg">
-                <div
-                  className={`slots-bar-fill ${isSlotsCritical ? 'critical' : ''}`}
-                  style={{ width: `${slotsPercentage}%` }}
-                ></div>
+            ) : (
+              <div className="slots-container">
+                <div className="slots-text">Acesso Beta gratuito disponível</div>
               </div>
-              {isSlotsCritical && <div className="slots-warning">Vagas limitadas!</div>}
-            </div>
+            )}
 
             <ul className="pricing-features">
               <li>✅ Consultoria via Chat IA Ilimitada</li>

@@ -107,14 +107,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
 
         const result = await response.json();
         const summary: string = result.summary || 'Documento processado.';
-        const extractedDataJson: string | null = result.extractedData || null;
 
-        // Monta a mensagem que entra no chat: o resumo em texto, seguido
-        // (se houver) dos dados extraídos como contexto explícito para a
-        // IA usar na próxima resposta — mas como TEXTO, não como anexo.
-        const messageContent = extractedDataJson
-          ? `📄 Documento anexado: ${pendingAttachment.fileName}\n\n${summary}\n\n[Dados extraídos do documento para referência: ${extractedDataJson}]`
-          : `📄 Documento anexado: ${pendingAttachment.fileName}\n\n${summary}`;
+        // IMPORTANTE: só o resumo em PROSA entra na mensagem do chat — nunca
+        // o JSON bruto extraído. O resumo já contém os valores relevantes em
+        // texto natural, o que é suficiente para a IA continuar a conversa.
+        // Incluir o JSON aqui faria o histórico crescer sem limite a cada
+        // documento anexado, eventualmente estourando o limite de payload
+        // do Vercel (413) em conversas com múltiplos anexos.
+        const messageContent = `📄 Documento anexado: ${pendingAttachment.fileName}\n\n${summary}`;
 
         onSendMessage(trimmed ? `${trimmed}\n\n${messageContent}` : messageContent);
 

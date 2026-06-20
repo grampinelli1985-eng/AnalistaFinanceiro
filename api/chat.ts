@@ -192,14 +192,25 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { messages, financialData } = await req.json();
+    const { messages: allMessages, financialData } = await req.json();
 
-    if (!messages || !Array.isArray(messages)) {
+    if (!allMessages || !Array.isArray(allMessages)) {
       return new Response(JSON.stringify({ error: 'Messages are required and must be an array' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
     }
+
+    // Proteção defensiva contra payload grande: mantém só as mensagens mais
+    // recentes do histórico. O financialData já carrega o estado persistido
+    // (renda, despesas, dívidas), então turnos muito antigos da conversa não
+    // são essenciais para a IA continuar — isso evita que conversas longas
+    // (especialmente com múltiplos documentos resumidos) eventualmente
+    // ultrapassem o limite de payload de 4.5MB do Vercel (erro 413).
+    const MAX_HISTORY_MESSAGES = 40;
+    const messages = allMessages.length > MAX_HISTORY_MESSAGES
+      ? allMessages.slice(-MAX_HISTORY_MESSAGES)
+      : allMessages;
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
