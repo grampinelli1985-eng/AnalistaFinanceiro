@@ -177,13 +177,12 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
       {/* Hero Section */}
       <section className="hero-section">
         <div className="hero-content">
-          <div className="hero-badge">Acesso Antecipado Exclusivo</div>
+          <div className="hero-badge">Chega de planilhas chatas 👋</div>
           <h1 className="hero-title">
-            Chega de planilhas chatas.<br />
-            Assuma o controle com <span className="text-gradient">Inteligência Artificial</span>.
+            Assuma o controle das suas finanças com <span className="text-gradient">Inteligência Artificial</span>.
           </h1>
           <p className="hero-subtitle">
-            Seu consultor financeiro pessoal 24/7. Ele não julga, ele resolve. Descubra para onde seu dinheiro está indo, quite suas dívidas mais rápido e construa patrimônio com um plano de ação automatizado e sob medida para a sua realidade.
+            Converse com sua IA financeira e descubra, em minutos, para onde seu dinheiro está realmente indo. Obtenha um plano claro para quitar dívidas, criar reserva e começar a investir — sem planilha, sem complicação.
           </p>
           <div className="hero-actions">
             <button onClick={onLoginClick} className="btn btn-primary hero-btn">
