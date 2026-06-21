@@ -58,9 +58,15 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Usuário não autenticado.');
 
+      const cpfDigits = cpf.replace(/\D/g, '');
+      if (cpfDigits.length < 11) {
+        throw new Error('Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.');
+      }
+
       const payload: any = {
         planId,
         method: paymentMethod,
+        cpfCnpj: cpf.replace(/\D/g, ''),
       };
 
       if (paymentMethod === 'cartao') {
@@ -71,7 +77,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
           expiryMonth,
           expiryYear,
           ccv,
-          cpf: cpf.replace(/\D/g, ''),
           postalCode: postalCode.replace(/\D/g, ''),
           addressNumber,
         };
@@ -288,6 +293,23 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
             {!pixData && !boletoData && (
               <form onSubmit={handleInitializeCheckout}>
                 <div style={{ marginBottom: 'var(--space-lg)' }}>
+                  <label className="modal-label" style={{ marginBottom: '8px' }}>CPF ou CNPJ do Cliente:</label>
+                  <input
+                    type="text"
+                    placeholder="Somente números"
+                    required
+                    maxLength={18}
+                    value={cpf}
+                    onChange={(e) => setCpf(e.target.value.replace(/\D/g, ''))}
+                    className="auth-input"
+                    style={{ padding: '8px 12px', fontSize: '0.875rem', width: '100%' }}
+                  />
+                  <p style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
+                    Obrigatório pelo Asaas para gerar qualquer cobrança (Pix, Boleto ou Cartão).
+                  </p>
+                </div>
+
+                <div style={{ marginBottom: 'var(--space-lg)' }}>
                   <label className="modal-label" style={{ marginBottom: '8px' }}>Método de Pagamento:</label>
                   <div style={{ display: 'flex', border: '1px solid var(--color-border)', borderRadius: '10px', overflow: 'hidden' }}>
                     <button 
@@ -371,16 +393,6 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     </div>
                     
                     <h4 style={{ margin: '6px 0 2px 0', fontSize: '0.9rem' }}>Dados do Titular</h4>
-                    <input 
-                      type="text" 
-                      placeholder="CPF do Titular" 
-                      required 
-                      maxLength={14}
-                      value={cpf} 
-                      onChange={(e) => setCpf(e.target.value.replace(/\D/g, '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'))} 
-                      className="auth-input" 
-                      style={{ padding: '8px 12px', fontSize: '0.875rem' }}
-                    />
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <input 
                         type="text" 
@@ -413,25 +425,25 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
                       >
                         {planId === 'family' ? (
                           <>
-                            <option value={1}>1x de R$ 79,90 (Sem juros)</option>
-                            <option value={2}>2x de R$ 39,95 (Sem juros)</option>
-                            <option value={3}>3x de R$ 26,63 (Sem juros)</option>
-                            <option value={4}>4x de R$ 19,97 (Sem juros)</option>
-                            <option value={5}>5x de R$ 15,98 (Sem juros)</option>
-                            <option value={6}>6x de R$ 13,31 (Sem juros)</option>
-                            <option value={7}>7x de R$ 11,41 (Sem juros)</option>
-                            <option value={8}>8x de R$ 9,98 (Sem juros)</option>
-                            <option value={9}>9x de R$ 8,87 (Sem juros)</option>
-                            <option value={10}>10x de R$ 7,99 (Sem juros)</option>
+                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={1}>1x de R$ 79,90 (Sem juros)</option>
+                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={2}>2x de R$ 39,95 (Sem juros)</option>
+                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={3}>3x de R$ 26,63 (Sem juros)</option>
+                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={4}>4x de R$ 19,97 (Sem juros)</option>
+                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={5}>5x de R$ 15,98 (Sem juros)</option>
+                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={6}>6x de R$ 13,31 (Sem juros)</option>
+                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={7}>7x de R$ 11,41 (Sem juros)</option>
+                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={8}>8x de R$ 9,98 (Sem juros)</option>
+                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={9}>9x de R$ 8,87 (Sem juros)</option>
+                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={10}>10x de R$ 7,99 (Sem juros)</option>
                           </>
                         ) : (
                           <>
-                            <option value={1}>1x de R$ 59,90 (Sem juros)</option>
-                            <option value={2}>2x de R$ 29,95 (Sem juros)</option>
-                            <option value={3}>3x de R$ 19,96 (Sem juros)</option>
-                            <option value={4}>4x de R$ 14,97 (Sem juros)</option>
-                            <option value={5}>5x de R$ 11,98 (Sem juros)</option>
-                            <option value={6}>6x de R$ 9,98 (Sem juros)</option>
+                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={1}>1x de R$ 59,90 (Sem juros)</option>
+                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={2}>2x de R$ 29,95 (Sem juros)</option>
+                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={3}>3x de R$ 19,96 (Sem juros)</option>
+                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={4}>4x de R$ 14,97 (Sem juros)</option>
+                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={5}>5x de R$ 11,98 (Sem juros)</option>
+                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={6}>6x de R$ 9,98 (Sem juros)</option>
                           </>
                         )}
                       </select>

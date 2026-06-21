@@ -44,7 +44,14 @@ export async function POST(req: Request) {
       });
     }
 
-    const { planId, method, installments, cardInfo } = await req.json();
+    const { planId, method, installments, cardInfo, cpfCnpj } = await req.json();
+
+    if (!cpfCnpj || cpfCnpj.replace(/\D/g, '').length < 11) {
+      return new Response(JSON.stringify({ error: 'CPF ou CNPJ do cliente é obrigatório e precisa ser válido.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
 
     if (!planId || !method) {
       return new Response(JSON.stringify({ error: 'Plano e método de pagamento são obrigatórios.' }), {
@@ -195,6 +202,7 @@ export async function POST(req: Request) {
     const customerPayload = {
       name: user.user_metadata?.name || 'Cliente Analista Financeiro',
       email: user.email,
+      cpfCnpj: cpfCnpj.replace(/\D/g, ''),
       externalReference: user.id,
     };
 
@@ -241,7 +249,7 @@ export async function POST(req: Request) {
       asaasSubPayload.creditCardHolderInfo = {
         name: cardInfo.holderName,
         email: user.email,
-        cpfCnpj: cardInfo.cpf,
+        cpfCnpj: cpfCnpj.replace(/\D/g, ''),
         postalCode: cardInfo.postalCode,
         addressNumber: cardInfo.addressNumber,
         phone: cardInfo.phone || '11999999999',
