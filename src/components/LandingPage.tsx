@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import '../LandingPage.css';
 
 interface LandingPageProps {
-  onLoginClick: () => void;
+  onLoginClick: (planId?: 'basic' | 'family') => void;
 }
 
 const faqs = [
@@ -168,7 +168,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
           <span className="logo-text">Analista Financeiro IA</span>
         </div>
         <div className="landing-nav">
-          <button onClick={onLoginClick} className="btn btn-primary landing-login-btn">
+          <button onClick={() => onLoginClick()} className="btn btn-primary landing-login-btn">
             {isSticky ? 'Garantir Vaga Gratuita →' : 'Acessar Plataforma'}
           </button>
         </div>
@@ -472,7 +472,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
                   <li>✅ Dossiê Completo em PDF</li>
                   <li>✅ Limite: 20 msgs/dia pós-relatório</li>
                 </ul>
-                <button onClick={onLoginClick} className="btn btn-primary pricing-btn">
+                <button onClick={() => onLoginClick()} className="btn btn-primary pricing-btn">
                   Garantir Teste Gratuito
                 </button>
                 <p className="pricing-note">Exclusivo para os 50 primeiros cadastros.</p>
@@ -494,7 +494,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
                 <li>✅ Limite: 40 msgs/dia pós-relatório</li>
                 <li>✅ Sincronização segura na nuvem</li>
               </ul>
-              <button onClick={onLoginClick} className="btn btn-primary pricing-btn">
+              <button onClick={() => onLoginClick('basic')} className="btn btn-primary pricing-btn">
                 Começar Plano Basic
               </button>
               <p className="pricing-note">Ideal para organização financeira pessoal.</p>
@@ -516,7 +516,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
                 <li>✅ Limite: 100 msgs/dia (pool compartilhado)</li>
                 <li>✅ Dossiê Completo em PDF para todos</li>
               </ul>
-              <button onClick={onLoginClick} className="btn btn-primary pricing-btn" style={{ background: 'linear-gradient(135deg, var(--color-accent) 0%, #4f46e5 100%)' }}>
+              <button onClick={() => onLoginClick('family')} className="btn btn-primary pricing-btn" style={{ background: 'linear-gradient(135deg, var(--color-accent) 0%, #4f46e5 100%)' }}>
                 Começar Plano Family
               </button>
               <p className="pricing-note">A melhor escolha para planejar em família.</p>

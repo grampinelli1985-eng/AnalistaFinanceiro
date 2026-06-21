@@ -13,6 +13,9 @@ declare const process: {
 const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
+// Sandbox correto: api-sandbox.asaas.com (não "sandbox.asaas.com/api")
+const ASAAS_BASE_URL = 'https://api-sandbox.asaas.com/v3';
+
 async function getAuthUser(req: Request) {
   if (!supabaseUrl || !serviceKey) return null;
   const supabase = createClient(supabaseUrl, serviceKey);
@@ -195,7 +198,7 @@ export async function POST(req: Request) {
       externalReference: user.id,
     };
 
-    const customerRes = await fetch('https://sandbox.asaas.com/api/v3/customers?email=' + encodeURIComponent(user.email || ''), {
+    const customerRes = await fetch(`${ASAAS_BASE_URL}/customers?email=` + encodeURIComponent(user.email || ''), {
       method: 'GET',
       headers,
     });
@@ -204,7 +207,7 @@ export async function POST(req: Request) {
     let customerId = customerData.data?.[0]?.id;
 
     if (!customerId) {
-      const createCustRes = await fetch('https://sandbox.asaas.com/api/v3/customers', {
+      const createCustRes = await fetch(`${ASAAS_BASE_URL}/customers`, {
         method: 'POST',
         headers,
         body: JSON.stringify(customerPayload),
@@ -245,7 +248,7 @@ export async function POST(req: Request) {
       };
     }
 
-    const subCreateRes = await fetch('https://sandbox.asaas.com/api/v3/subscriptions', {
+    const subCreateRes = await fetch(`${ASAAS_BASE_URL}/subscriptions`, {
       method: 'POST',
       headers,
       body: JSON.stringify(asaasSubPayload),
@@ -273,11 +276,11 @@ export async function POST(req: Request) {
 
     // 4. Obter dados de pagamento imediato (QR Code PIX ou boleto bancário se não for cartão)
     if (method === 'pix') {
-      const payId = asaasSub.paymentId || (await fetch(`https://sandbox.asaas.com/api/v3/subscriptions/${asaasSub.id}/payments`, { headers }))
+      const payId = asaasSub.paymentId || (await fetch(`${ASAAS_BASE_URL}/subscriptions/${asaasSub.id}/payments`, { headers }))
         .json()
         .then((d: any) => d.data?.[0]?.id);
 
-      const pixRes = await fetch(`https://sandbox.asaas.com/api/v3/payments/${payId}/pixQrCode`, { headers });
+      const pixRes = await fetch(`${ASAAS_BASE_URL}/payments/${payId}/pixQrCode`, { headers });
       const pixData = await pixRes.json();
 
       return new Response(JSON.stringify({
@@ -292,11 +295,11 @@ export async function POST(req: Request) {
     }
 
     if (method === 'boleto') {
-      const payId = asaasSub.paymentId || (await fetch(`https://sandbox.asaas.com/api/v3/subscriptions/${asaasSub.id}/payments`, { headers }))
+      const payId = asaasSub.paymentId || (await fetch(`${ASAAS_BASE_URL}/subscriptions/${asaasSub.id}/payments`, { headers }))
         .json()
         .then((d: any) => d.data?.[0]?.id);
 
-      const payRes = await fetch(`https://sandbox.asaas.com/api/v3/payments/${payId}`, { headers });
+      const payRes = await fetch(`${ASAAS_BASE_URL}/payments/${payId}`, { headers });
       const payData = await payRes.json();
 
       return new Response(JSON.stringify({

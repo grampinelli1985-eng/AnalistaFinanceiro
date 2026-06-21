@@ -17,6 +17,7 @@ import ProfileBadge from './components/ProfileBadge';
 import LandingPage from './components/LandingPage';
 import ConsentModal from './components/ConsentModal';
 import SettingsModal from './components/SettingsModal';
+import CheckoutModal from './components/CheckoutModal';
 
 // Serviços e Lib
 import { supabase } from './lib/supabase';
@@ -55,7 +56,7 @@ import type {
 import jsPDF from 'jspdf';
 
 // ── Tipos de tela ──────────────────────────
-type AppView = 'landing' | 'login' | 'profile-select' | 'main-app' | 'family-view';
+type AppView = 'landing' | 'login' | 'profile-select' | 'main-app' | 'family-view' | 'checkout-required';
 
 // ──────────────────────────────────────────────
 // COMPONENTE PRINCIPAL
@@ -67,6 +68,7 @@ const App: React.FC = () => {
   const [isInitializing, setIsInitializing] = useState(true);
   const hasInitializedRef = useRef(false);
   const [needsConsent, setNeedsConsent] = useState(false);
+  const [checkoutInitialPlan, setCheckoutInitialPlan] = useState<'basic' | 'family'>('basic');
 
   // ── Responsividade Mobile ──────────────────
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
@@ -170,6 +172,33 @@ const App: React.FC = () => {
     // Tentar migrar dados antigos locais para o banco novo
     await migrateLocalDataToSupabase();
     await recoverOrphanedData();
+
+    // ── Verificação de assinatura ──────────────
+    // Bloqueia o acesso ao app se a assinatura não estiver em trial/ativa.
+    // (status possíveis: 'trial', 'active', 'past_due', 'canceled', 'blocked')
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: subscription } = await supabase
+          .from('subscriptions')
+          .select('status, plan_id')
+          .eq('account_id', user.id)
+          .maybeSingle();
+
+        const hasAccess = subscription?.status === 'trial' || subscription?.status === 'active';
+
+        if (!hasAccess) {
+          const pendingPlan = localStorage.getItem('pendingPlanChoice');
+          setCheckoutInitialPlan(pendingPlan === 'family' ? 'family' : 'basic');
+          setAppView('checkout-required');
+          setIsInitializing(false);
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('Erro ao verificar assinatura:', err);
+      // Em caso de falha na verificação, não bloqueia o usuário — segue o fluxo normal.
+    }
 
     // Carregar perfis do Supabase
     const allProfiles = await loadProfiles();
@@ -823,7 +852,16 @@ const App: React.FC = () => {
   // ── Render: Landing / Login ─────────────────
   if (!session) {
     if (appView === 'landing') {
-      return <LandingPage onLoginClick={() => setAppView('login')} />;
+      return (
+        <LandingPage
+          onLoginClick={(planId) => {
+            if (planId) {
+              localStorage.setItem('pendingPlanChoice', planId);
+            }
+            setAppView('login');
+          }}
+        />
+      );
     }
     return <LoginScreen onLoginSuccess={() => {}} />;
   }
@@ -834,6 +872,23 @@ const App: React.FC = () => {
       <ConsentModal
         onAcceptConsent={handleAcceptConsent}
         onLogout={handleLogout}
+      />
+    );
+  }
+
+  // Se a assinatura não está em trial/ativa, bloqueia o acesso ao app
+  // e força a tela de pagamento — não deixa entrar em profile-select/main-app.
+  if (appView === 'checkout-required') {
+    return (
+      <CheckoutModal
+        isOpen={true}
+        initialPlanId={checkoutInitialPlan}
+        onClose={handleLogout}
+        onPaymentSuccess={() => {
+          localStorage.removeItem('pendingPlanChoice');
+          hasInitializedRef.current = false;
+          initUserData();
+        }}
       />
     );
   }
