@@ -30,6 +30,25 @@ async function getAuthUser(req: Request) {
   return user;
 }
 
+async function getFirstPaymentId(subscriptionId: string, headers: Record<string, string>): Promise<string | null> {
+  // O Asaas pode levar um instante para gerar a primeira cobrança da assinatura.
+  // Tenta algumas vezes com espera antes de desistir.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const res = await fetch(`${ASAAS_BASE_URL}/subscriptions/${subscriptionId}/payments`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        const id = data?.data?.[0]?.id;
+        if (id) return id;
+      }
+    } catch {
+      // tenta novamente na próxima iteração
+    }
+    await new Promise((resolve) => setTimeout(resolve, 800));
+  }
+  return null;
+}
+
 export async function POST(req: Request) {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
@@ -293,11 +312,21 @@ export async function POST(req: Request) {
 
     // 4. Obter dados de pagamento imediato (QR Code PIX ou boleto bancário se não for cartão)
     if (method === 'pix') {
-      const payId = asaasSub.paymentId || (await fetch(`${ASAAS_BASE_URL}/subscriptions/${asaasSub.id}/payments`, { headers }))
-        .json()
-        .then((d: any) => d.data?.[0]?.id);
+      const payId = asaasSub.paymentId || (await getFirstPaymentId(asaasSub.id, headers));
+
+      if (!payId) {
+        return new Response(JSON.stringify({
+          error: 'A cobrança foi criada, mas o Asaas ainda não gerou os dados do Pix. Tente novamente em alguns segundos.',
+        }), { status: 202, headers: { 'Content-Type': 'application/json' } });
+      }
 
       const pixRes = await fetch(`${ASAAS_BASE_URL}/payments/${payId}/pixQrCode`, { headers });
+      if (!pixRes.ok) {
+        return new Response(JSON.stringify({ error: 'Não foi possível gerar o QR Code Pix. Tente novamente.' }), {
+          status: 502,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
       const pixData = await pixRes.json();
 
       return new Response(JSON.stringify({
@@ -312,11 +341,21 @@ export async function POST(req: Request) {
     }
 
     if (method === 'boleto') {
-      const payId = asaasSub.paymentId || (await fetch(`${ASAAS_BASE_URL}/subscriptions/${asaasSub.id}/payments`, { headers }))
-        .json()
-        .then((d: any) => d.data?.[0]?.id);
+      const payId = asaasSub.paymentId || (await getFirstPaymentId(asaasSub.id, headers));
+
+      if (!payId) {
+        return new Response(JSON.stringify({
+          error: 'A cobrança foi criada, mas o Asaas ainda não gerou os dados do boleto. Tente novamente em alguns segundos.',
+        }), { status: 202, headers: { 'Content-Type': 'application/json' } });
+      }
 
       const payRes = await fetch(`${ASAAS_BASE_URL}/payments/${payId}`, { headers });
+      if (!payRes.ok) {
+        return new Response(JSON.stringify({ error: 'Não foi possível obter os dados do boleto. Tente novamente.' }), {
+          status: 502,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
       const payData = await payRes.json();
 
       return new Response(JSON.stringify({
