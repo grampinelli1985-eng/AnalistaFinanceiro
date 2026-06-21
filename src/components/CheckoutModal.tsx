@@ -315,21 +315,21 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     <button 
                       type="button" 
                       onClick={() => setPaymentMethod('pix')}
-                      style={{ flex: 1, padding: '10px', background: paymentMethod === 'pix' ? 'var(--color-accent)' : 'none', border: 'none', color: paymentMethod === 'pix' ? '#fff' : 'var(--color-text-primary)', cursor: 'pointer' }}
+                      style={{ flex: 1, padding: '10px', background: paymentMethod === 'pix' ? 'var(--color-accent)' : 'none', border: 'none', color: paymentMethod === 'pix' ? '#fff' : '#f1f5f9', cursor: 'pointer' }}
                     >
                       Pix (Rápido)
                     </button>
                     <button 
                       type="button" 
                       onClick={() => setPaymentMethod('boleto')}
-                      style={{ flex: 1, padding: '10px', background: paymentMethod === 'boleto' ? 'var(--color-accent)' : 'none', border: 'none', color: paymentMethod === 'boleto' ? '#fff' : 'var(--color-text-primary)', cursor: 'pointer', borderLeft: '1px solid var(--color-border)', borderRight: '1px solid var(--color-border)' }}
+                      style={{ flex: 1, padding: '10px', background: paymentMethod === 'boleto' ? 'var(--color-accent)' : 'none', border: 'none', color: paymentMethod === 'boleto' ? '#fff' : '#f1f5f9', cursor: 'pointer', borderLeft: '1px solid var(--color-border)', borderRight: '1px solid var(--color-border)' }}
                     >
                       Boleto
                     </button>
                     <button 
                       type="button" 
                       onClick={() => setPaymentMethod('cartao')}
-                      style={{ flex: 1, padding: '10px', background: paymentMethod === 'cartao' ? 'var(--color-accent)' : 'none', border: 'none', color: paymentMethod === 'cartao' ? '#fff' : 'var(--color-text-primary)', cursor: 'pointer' }}
+                      style={{ flex: 1, padding: '10px', background: paymentMethod === 'cartao' ? 'var(--color-accent)' : 'none', border: 'none', color: paymentMethod === 'cartao' ? '#fff' : '#f1f5f9', cursor: 'pointer' }}
                     >
                       Cartão de Crédito
                     </button>
@@ -421,29 +421,29 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
                         value={installments} 
                         onChange={(e) => setInstallments(Number(e.target.value))}
                         className="auth-input"
-                        style={{ padding: '8px 12px', fontSize: '0.875rem', background: 'var(--color-bg)', color: 'var(--color-text-primary)' }}
+                        style={{ padding: '8px 12px', fontSize: '0.875rem', background: '#111e35', color: '#f1f5f9' }}
                       >
                         {planId === 'family' ? (
                           <>
-                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={1}>1x de R$ 79,90 (Sem juros)</option>
-                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={2}>2x de R$ 39,95 (Sem juros)</option>
-                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={3}>3x de R$ 26,63 (Sem juros)</option>
-                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={4}>4x de R$ 19,97 (Sem juros)</option>
-                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={5}>5x de R$ 15,98 (Sem juros)</option>
-                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={6}>6x de R$ 13,31 (Sem juros)</option>
-                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={7}>7x de R$ 11,41 (Sem juros)</option>
-                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={8}>8x de R$ 9,98 (Sem juros)</option>
-                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={9}>9x de R$ 8,87 (Sem juros)</option>
-                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={10}>10x de R$ 7,99 (Sem juros)</option>
+                            <option style={{ background: '#111e35', color: '#f1f5f9' }} value={1}>1x de R$ 79,90 (Sem juros)</option>
+                            <option style={{ background: '#111e35', color: '#f1f5f9' }} value={2}>2x de R$ 39,95 (Sem juros)</option>
+                            <option style={{ background: '#111e35', color: '#f1f5f9' }} value={3}>3x de R$ 26,63 (Sem juros)</option>
+                            <option style={{ background: '#111e35', color: '#f1f5f9' }} value={4}>4x de R$ 19,97 (Sem juros)</option>
+                            <option style={{ background: '#111e35', color: '#f1f5f9' }} value={5}>5x de R$ 15,98 (Sem juros)</option>
+                            <option style={{ background: '#111e35', color: '#f1f5f9' }} value={6}>6x de R$ 13,31 (Sem juros)</option>
+                            <option style={{ background: '#111e35', color: '#f1f5f9' }} value={7}>7x de R$ 11,41 (Sem juros)</option>
+                            <option style={{ background: '#111e35', color: '#f1f5f9' }} value={8}>8x de R$ 9,98 (Sem juros)</option>
+                            <option style={{ background: '#111e35', color: '#f1f5f9' }} value={9}>9x de R$ 8,87 (Sem juros)</option>
+                            <option style={{ background: '#111e35', color: '#f1f5f9' }} value={10}>10x de R$ 7,99 (Sem juros)</option>
                           </>
                         ) : (
                           <>
-                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={1}>1x de R$ 59,90 (Sem juros)</option>
-                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={2}>2x de R$ 29,95 (Sem juros)</option>
-                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={3}>3x de R$ 19,96 (Sem juros)</option>
-                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={4}>4x de R$ 14,97 (Sem juros)</option>
-                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={5}>5x de R$ 11,98 (Sem juros)</option>
-                            <option style={{ background: 'var(--color-bg)', color: 'var(--color-text-primary)' }} value={6}>6x de R$ 9,98 (Sem juros)</option>
+                            <option style={{ background: '#111e35', color: '#f1f5f9' }} value={1}>1x de R$ 59,90 (Sem juros)</option>
+                            <option style={{ background: '#111e35', color: '#f1f5f9' }} value={2}>2x de R$ 29,95 (Sem juros)</option>
+                            <option style={{ background: '#111e35', color: '#f1f5f9' }} value={3}>3x de R$ 19,96 (Sem juros)</option>
+                            <option style={{ background: '#111e35', color: '#f1f5f9' }} value={4}>4x de R$ 14,97 (Sem juros)</option>
+                            <option style={{ background: '#111e35', color: '#f1f5f9' }} value={5}>5x de R$ 11,98 (Sem juros)</option>
+                            <option style={{ background: '#111e35', color: '#f1f5f9' }} value={6}>6x de R$ 9,98 (Sem juros)</option>
                           </>
                         )}
                       </select>
