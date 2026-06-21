@@ -21,9 +21,11 @@ const LoginScreen: React.FC<LoginScreenProps> = () => {
       setSuccessMsg(null);
 
       if (isRegistering) {
+        const pendingPlan = localStorage.getItem('pendingPlanChoice');
         const { error } = await supabase.auth.signUp({
           email,
           password,
+          options: pendingPlan ? { data: { intended_plan: pendingPlan } } : undefined,
         });
         if (error) throw error;
         setSuccessMsg('Conta criada! Você já pode fazer login (ou verifique seu email se o Supabase exigir).');
