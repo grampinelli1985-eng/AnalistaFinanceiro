@@ -159,7 +159,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const plan = getPlanDetails();
 
   return (
-    <div className="modal-backdrop" onClick={onClose} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+    <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 500, width: '90%', borderRadius: '16px', overflow: 'hidden', padding: 0, border: '1px solid rgba(255, 255, 255, 0.08)', background: 'var(--color-bg-panel)' }}>
         
         {/* Header do Checkout */}

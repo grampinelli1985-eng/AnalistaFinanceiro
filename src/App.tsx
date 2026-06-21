@@ -931,6 +931,7 @@ const App: React.FC = () => {
           onExportData={handleExportUserData}
           onDeleteAccountAndData={handleDeleteAccountAndData}
           onChangePlan={(planId) => {
+            setShowSettingsModal(false);
             setChangePlanTarget(planId);
             setShowChangePlanModal(true);
           }}
