@@ -185,7 +185,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
             Converse com sua IA financeira e descubra, em minutos, para onde seu dinheiro está realmente indo. Obtenha um plano claro para quitar dívidas, criar reserva e começar a investir — sem planilha, sem complicação.
           </p>
           <div className="hero-actions">
-            <button onClick={onLoginClick} className="btn btn-primary hero-btn">
+            <button onClick={() => onLoginClick()} className="btn btn-primary hero-btn">
               Começar Diagnóstico Gratuito
             </button>
             <a href="#how-it-works" className="btn hero-btn-outline">
@@ -257,7 +257,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
           </div>
         </div>
         <div className="ps-cta-container">
-          <button onClick={onLoginClick} className="btn ps-mini-cta">Quero o Jeito Analista IA →</button>
+          <button onClick={() => onLoginClick()} className="btn ps-mini-cta">Quero o Jeito Analista IA →</button>
         </div>
       </section>
 
@@ -407,7 +407,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
           *Exemplo ilustrativo da metodologia, não um resultado garantido. Seus resultados dependem da sua situação financeira real.
         </p>
         <div className="ba-cta">
-          <button onClick={onLoginClick} className="btn btn-primary hero-btn">
+          <button onClick={() => onLoginClick()} className="btn btn-primary hero-btn">
             Quero montar meu plano →
           </button>
         </div>
