@@ -284,6 +284,20 @@ export async function POST(req: Request) {
       };
     }
 
+    // Se já existir uma assinatura recorrente anterior no Asaas (ex: troca de
+    // plano, ou nova tentativa de pagamento), cancela ela antes de criar a
+    // nova — sem isso, as duas ficariam cobrando em paralelo.
+    if (subscription.gateway_subscription_id) {
+      try {
+        await fetch(`${ASAAS_BASE_URL}/subscriptions/${subscription.gateway_subscription_id}`, {
+          method: 'DELETE',
+          headers,
+        });
+      } catch (err) {
+        console.error('Erro ao cancelar assinatura anterior no Asaas (seguindo mesmo assim):', err);
+      }
+    }
+
     const subCreateRes = await fetch(`${ASAAS_BASE_URL}/subscriptions`, {
       method: 'POST',
       headers,

@@ -2,8 +2,9 @@
 // MODAL DE CONFIGURAÇÕES GERAIS
 // ==========================================
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import type { Profile } from '../types/financial';
+import { supabase } from '../lib/supabase';
 
 interface SettingsModalProps {
   profiles: Profile[];
@@ -12,9 +13,24 @@ interface SettingsModalProps {
   onClose: () => void;
   onExportData: () => Promise<void>;
   onDeleteAccountAndData: () => Promise<void>;
+  onChangePlan: (planId: 'basic' | 'family') => void;
 }
 
-type SettingsTab = 'sharing' | 'privacy';
+type SettingsTab = 'sharing' | 'privacy' | 'subscription';
+
+const PLAN_LABELS: Record<string, { name: string; price: string }> = {
+  beta: { name: 'Beta Trial', price: 'Grátis (90 dias)' },
+  basic: { name: 'Basic', price: 'R$ 59,90/ano' },
+  family: { name: 'Family', price: 'R$ 79,90/ano' },
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  trial: 'Em período de teste',
+  active: 'Ativa',
+  past_due: 'Pagamento pendente',
+  blocked: 'Bloqueada (pagamento necessário)',
+  canceled: 'Cancelada',
+};
 
 const SettingsModal: React.FC<SettingsModalProps> = ({
   profiles,
@@ -23,8 +39,47 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   onExportData,
   onDeleteAccountAndData,
+  onChangePlan,
 }) => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('sharing');
+
+  // Estados da aba de Assinatura
+  const [subscription, setSubscription] = useState<{ plan_id: string; status: string } | null>(null);
+  const [loadingSubscription, setLoadingSubscription] = useState(true);
+  const [isCanceling, setIsCanceling] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from('subscriptions')
+        .select('plan_id, status')
+        .maybeSingle();
+      setSubscription(data || null);
+      setLoadingSubscription(false);
+    })();
+  }, []);
+
+  const handleCancelSubscription = async () => {
+    if (!window.confirm('Tem certeza que deseja cancelar sua assinatura? Você perde o acesso aos recursos pagos imediatamente.')) {
+      return;
+    }
+    setIsCanceling(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/cancel-subscription', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao cancelar.');
+      setSubscription((prev) => (prev ? { ...prev, status: 'canceled' } : prev));
+    } catch (err) {
+      console.error('Erro ao cancelar assinatura:', err);
+      alert('Não foi possível cancelar a assinatura agora. Tente novamente em alguns instantes.');
+    } finally {
+      setIsCanceling(false);
+    }
+  };
 
   // Estados locais LGPD
   const [isExporting, setIsExporting] = useState(false);
@@ -104,6 +159,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             aria-selected={activeTab === 'privacy'}
           >
             🛡️ Privacidade & LGPD
+          </button>
+          <button
+            className={`settings-tab ${activeTab === 'subscription' ? 'active' : ''}`}
+            onClick={() => setActiveTab('subscription')}
+            role="tab"
+            aria-selected={activeTab === 'subscription'}
+          >
+            💳 Assinatura
           </button>
         </div>
 
@@ -309,6 +372,94 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                   {isDeleting ? <span className="spinner" style={{ width: 14, height: 14 }} /> : '🗑️'} Excluir Minha Conta e Todos os Dados
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* ── ABA 3: ASSINATURA ── */}
+          {activeTab === 'subscription' && (
+            <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {loadingSubscription ? (
+                <p style={{ textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.875rem', marginTop: '24px' }}>
+                  Carregando...
+                </p>
+              ) : !subscription ? (
+                <p style={{ textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.875rem', marginTop: '24px' }}>
+                  Nenhuma assinatura encontrada.
+                </p>
+              ) : (
+                <>
+                  <div>
+                    <h4 style={{ margin: '0 0 4px', color: 'var(--color-text-primary)', fontSize: '0.85rem' }}>Plano Atual</h4>
+                    <div style={{ padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)' }}>
+                      <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text-primary)', fontSize: '0.9rem' }}>
+                        {PLAN_LABELS[subscription.plan_id]?.name || subscription.plan_id} — {PLAN_LABELS[subscription.plan_id]?.price || ''}
+                      </p>
+                      <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: 'var(--color-text-secondary)' }}>
+                        Status: {STATUS_LABELS[subscription.status] || subscription.status}
+                      </p>
+                    </div>
+                  </div>
+
+                  {subscription.status !== 'canceled' && (
+                    <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '12px' }}>
+                      <h4 style={{ margin: '0 0 4px', color: 'var(--color-text-primary)', fontSize: '0.85rem' }}>Trocar de Plano</h4>
+                      <p className="modal-description" style={{ fontSize: '0.75rem', marginBottom: '8px' }}>
+                        A troca abre uma nova cobrança imediata referente ao novo plano.
+                      </p>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        {subscription.plan_id !== 'basic' && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            style={{ flex: 1, padding: '8px', fontSize: '0.78rem', border: '1px solid var(--color-border)' }}
+                            onClick={() => onChangePlan('basic')}
+                          >
+                            Mudar para Basic
+                          </button>
+                        )}
+                        {subscription.plan_id !== 'family' && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            style={{ flex: 1, padding: '8px', fontSize: '0.78rem', border: '1px solid var(--color-border)' }}
+                            onClick={() => onChangePlan('family')}
+                          >
+                            Mudar para Family
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {subscription.status !== 'canceled' && (
+                    <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '12px' }}>
+                      <h4 style={{ margin: '0 0 4px', color: 'var(--color-critical)', fontSize: '0.85rem' }}>Cancelar Assinatura</h4>
+                      <p className="modal-description" style={{ fontSize: '0.75rem', marginBottom: '8px' }}>
+                        Você perde o acesso aos recursos pagos imediatamente. Para voltar, será necessário assinar de novo.
+                      </p>
+                      <button
+                        type="button"
+                        className="btn btn-sm w-full"
+                        style={{
+                          background: 'rgba(239, 68, 68, 0.15)',
+                          border: '1px solid var(--color-critical)',
+                          color: 'var(--color-text-primary)',
+                          padding: '8px',
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                          cursor: isCanceling ? 'not-allowed' : 'pointer',
+                          opacity: isCanceling ? 0.6 : 1,
+                          borderRadius: 'var(--radius-lg)',
+                        }}
+                        onClick={handleCancelSubscription}
+                        disabled={isCanceling}
+                      >
+                        {isCanceling ? <span className="spinner" style={{ width: 14, height: 14 }} /> : '🚫'} Cancelar Assinatura
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
 

@@ -69,6 +69,8 @@ const App: React.FC = () => {
   const hasInitializedRef = useRef(false);
   const [needsConsent, setNeedsConsent] = useState(false);
   const [checkoutInitialPlan, setCheckoutInitialPlan] = useState<'basic' | 'family'>('basic');
+  const [showChangePlanModal, setShowChangePlanModal] = useState(false);
+  const [changePlanTarget, setChangePlanTarget] = useState<'basic' | 'family'>('basic');
 
   // ── Responsividade Mobile ──────────────────
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
@@ -915,7 +917,7 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* Modal de Configurações (Visão Familiar + Privacidade/LGPD) */}
+      {/* Modal de Configurações (Visão Familiar + Privacidade/LGPD + Assinatura) */}
       {showSettingsModal && (
         <SettingsModal
           profiles={profiles}
@@ -928,6 +930,22 @@ const App: React.FC = () => {
           onClose={() => setShowSettingsModal(false)}
           onExportData={handleExportUserData}
           onDeleteAccountAndData={handleDeleteAccountAndData}
+          onChangePlan={(planId) => {
+            setChangePlanTarget(planId);
+            setShowChangePlanModal(true);
+          }}
+        />
+      )}
+
+      {/* Modal de troca de plano, aberto a partir das Configurações */}
+      {showChangePlanModal && (
+        <CheckoutModal
+          isOpen={true}
+          initialPlanId={changePlanTarget}
+          onClose={() => setShowChangePlanModal(false)}
+          onPaymentSuccess={() => {
+            setShowChangePlanModal(false);
+          }}
         />
       )}
 
