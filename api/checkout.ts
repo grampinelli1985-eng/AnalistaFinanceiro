@@ -225,6 +225,15 @@ export async function POST(req: Request) {
       if (!customerId) {
         throw new Error('Falha ao criar cliente no Asaas: ' + JSON.stringify(newCust));
       }
+    } else {
+      // Cliente já existia (ex: tentativa de teste anterior) — garante que o
+      // CPF/CNPJ está sincronizado, já que pode ter ficado vazio numa tentativa
+      // anterior a essa correção.
+      await fetch(`${ASAAS_BASE_URL}/customers/${customerId}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ name: customerPayload.name, cpfCnpj: customerPayload.cpfCnpj }),
+      });
     }
 
     // 2. Criar Cobrança (Assinatura Recorrente no Asaas)
