@@ -11,7 +11,7 @@ declare const process: {
   };
 };
 
-const MODEL = 'gemini-1.5-flash-002';
+const MODEL = 'gemini-1.5-flash';
 const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
@@ -435,7 +435,12 @@ Mencione isso ocasionalmente de forma natural se aplicável (ex: "Temos mais ${m
     }
     apiMessages = normalizedMessages;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`;
+    // INJEÇÃO DA INSTRUÇÃO DE SISTEMA (Workaround para v1)
+    if (apiMessages.length > 0) {
+      apiMessages[0].parts[0].text = `[INSTRUÇÕES DO SISTEMA (Siga estritamente)]\n${systemContext}\n\n[MENSAGEM DO USUÁRIO]\n${apiMessages[0].parts[0].text}`;
+    }
+
+    const url = `https://generativelanguage.googleapis.com/v1/models/${MODEL}:generateContent?key=${apiKey}`;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -443,9 +448,6 @@ Mencione isso ocasionalmente de forma natural se aplicável (ex: "Temos mais ${m
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        systemInstruction: {
-          parts: [{ text: systemContext }]
-        },
         contents: apiMessages,
         generationConfig: {
           temperature: 0.7,

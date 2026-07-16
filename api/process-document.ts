@@ -22,7 +22,7 @@ declare const process: {
   };
 };
 
-const MODEL = 'gemini-1.5-flash-002';
+const MODEL = 'gemini-1.5-flash';
 
 const EXTRACTION_SYSTEM_PROMPT = `Você é um extrator de dados financeiros especializado em ler faturas de cartão de crédito e extratos bancários brasileiros em PDF.
 
@@ -109,20 +109,17 @@ export async function POST(req: Request) {
       });
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1/models/${MODEL}:generateContent?key=${apiKey}`;
 
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        systemInstruction: {
-          parts: [{ text: EXTRACTION_SYSTEM_PROMPT }],
-        },
         contents: [
           {
             role: 'user',
             parts: [
-              { text: `Leia e extraia os dados financeiros deste documento: ${fileName || 'documento.pdf'}` },
+              { text: `[INSTRUÇÕES DO SISTEMA (Siga estritamente)]\n${EXTRACTION_SYSTEM_PROMPT}\n\n[MENSAGEM DO USUÁRIO]\nLeia e extraia os dados financeiros deste documento: ${fileName || 'documento.pdf'}` },
               { inline_data: { mime_type: mimeType, data } },
             ],
           },
