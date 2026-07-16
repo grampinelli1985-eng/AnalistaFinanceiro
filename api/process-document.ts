@@ -109,23 +109,31 @@ export async function POST(req: Request) {
       });
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1/models/${MODEL}:generateContent?key=${apiKey}`;
+    const apiMessages = [
+      {
+        role: "user",
+        parts: [
+          { text: `Leia e extraia os dados financeiros deste documento: ${fileName || 'documento.pdf'}` },
+          { inline_data: { mime_type: mimeType, data } },
+        ]
+      }
+    ];
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey
+      },
       body: JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              { text: `[INSTRUÇÕES DO SISTEMA (Siga estritamente)]\n${EXTRACTION_SYSTEM_PROMPT}\n\n[MENSAGEM DO USUÁRIO]\nLeia e extraia os dados financeiros deste documento: ${fileName || 'documento.pdf'}` },
-              { inline_data: { mime_type: mimeType, data } },
-            ],
-          },
-        ],
+        systemInstruction: {
+          parts: [{ text: EXTRACTION_SYSTEM_PROMPT }]
+        },
+        contents: apiMessages,
         generationConfig: {
-          temperature: 0.3, // mais baixa que o chat normal — extração precisa ser literal, não criativa
+          temperature: 0.1, // mais baixa que o chat normal — extração precisa ser literal, não criativa
           maxOutputTokens: 4096,
         },
       }),
