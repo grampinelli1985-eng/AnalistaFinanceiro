@@ -22,7 +22,7 @@ declare const process: {
   };
 };
 
-const MODEL = 'gemini-pro';
+const MODEL = 'gemini-flash-latest';
 
 const EXTRACTION_SYSTEM_PROMPT = `Você é um extrator de dados financeiros especializado em ler faturas de cartão de crédito e extratos bancários brasileiros em PDF.
 

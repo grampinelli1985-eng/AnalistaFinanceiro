@@ -11,7 +11,7 @@ declare const process: {
   };
 };
 
-const MODEL = 'gemini-1.5-flash';
+const MODEL = 'gemini-flash-latest';
 const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
