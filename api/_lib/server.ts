@@ -172,10 +172,10 @@ export async function checkSubscriptionAccess(
   const subscription = await loadSubscription(supabase, userId);
   const access = evaluateSubscriptionAccess(subscription);
 
-  if (access.allowed && subscription) {
+  if (!('reason' in access) && subscription) {
     return { allowed: true, subscription };
   }
-  if (!access.allowed) {
+  if ('reason' in access) {
     if (access.shouldPersistBlock && subscription) {
       await supabase
         .from('subscriptions')

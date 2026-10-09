@@ -124,7 +124,7 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     const access = await checkSubscriptionAccess(supabase, user.id);
-    if (!access.allowed) {
+    if ('reason' in access) {
       return jsonResponse({ error: BLOCK_MESSAGES[access.reason] }, 403);
     }
 

@@ -358,7 +358,7 @@ export async function POST(req: Request): Promise<Response> {
 
     // 5. Assinatura
     const access = await checkSubscriptionAccess(supabase, user.id);
-    if (!access.allowed) {
+    if ('reason' in access) {
       return blockedResponse(access.reason);
     }
     const subscription = access.subscription;

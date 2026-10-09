@@ -187,7 +187,7 @@ export async function POST(req: Request): Promise<Response> {
       }
 
       const result = await fetchAsaas<AsaasPayment>(`/payments/${paymentId}`);
-      if (!result.ok) {
+      if ('status' in result) {
         console.error(`Webhook: pagamento ${paymentId} não encontrado no Asaas (HTTP ${result.status}).`);
         return jsonResponse({ error: 'Pagamento não confirmado no gateway.' }, result.status === 404 ? 404 : 502);
       }
@@ -263,7 +263,7 @@ export async function POST(req: Request): Promise<Response> {
       }
 
       const result = await fetchAsaas<AsaasSubscription>(`/subscriptions/${gatewaySubId}`);
-      const reallyEnded = !result.ok
+      const reallyEnded = 'status' in result
         ? result.status === 404
         : result.data.deleted === true || result.data.status === 'INACTIVE' || result.data.status === 'EXPIRED';
 
