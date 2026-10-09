@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { calculateFinancialBalance, calculateHealthLevel } from './financialCalculations';
-import type { FinancialData } from '../types/financial';
+import { calculateFinancialBalance, calculateHealthLevel, simulateAvalanchePayoff, simulateSnowballPayoff } from './financialCalculations';
+import type { FinancialData, Debt } from '../types/financial';
 
 describe('financialCalculations', () => {
   it('should correctly calculate the financial balance without duplications', () => {
@@ -164,5 +164,55 @@ describe('financialCalculations', () => {
     it('returns healthy when balance is solid and commitment is low', () => {
       expect(calculateHealthLevel(2000, 1000, 6000, 20)).toBe('healthy');
     });
+  });
+});
+
+describe('simulações de quitação de dívidas', () => {
+  const debt = (id: string, totalAmount: number, monthlyPayment: number, monthlyInterestRate: number): Debt => ({
+    id, name: id, type: 'other', totalAmount, monthlyPayment, monthlyInterestRate, remainingMonths: 0,
+  });
+
+  it('sem juros: quita no prazo exato da soma das parcelas + extra', () => {
+    // Orçamento mensal = 100 + 100 + 200 de extra = 400; total 1200 → 3 meses
+    const result = simulateAvalanchePayoff([debt('a', 600, 100, 0), debt('b', 600, 100, 0)], 200);
+    expect(result.months).toBe(3);
+    expect(result.totalInterestPaid).toBe(0);
+    expect(result.paidOff).toBe(true);
+  });
+
+  it('a parcela de uma dívida quitada passa para a próxima (efeito bola de neve)', () => {
+    // a: 100 em 1 mês. Depois disso b recebe 100 + 100 = 200/mês.
+    // b: mês 1 paga 100 (sobra 900), meses 2..6 pagam 200 → 900 - 1000 < 0 → quita no mês 6
+    const result = simulateSnowballPayoff([debt('a', 100, 100, 0), debt('b', 1000, 100, 0)], 0);
+    expect(result.months).toBe(6);
+  });
+
+  it('o extra não se perde quando a dívida prioritária já foi quitada', () => {
+    // Bug antigo: o extra ia só para a primeira dívida da lista, mesmo já quitada.
+    const result = simulateAvalanchePayoff([debt('cara', 50, 50, 10), debt('barata', 1000, 50, 0)], 450);
+    // Mês 1: juros 5 → cara 55; paga 50 mínimo + 5 do extra; barata recebe 50 + 445 → resta 505
+    // Mês 2: barata recebe todo o orçamento (550) → quitada
+    expect(result.months).toBe(2);
+    expect(result.totalInterestPaid).toBeCloseTo(5, 5);
+  });
+
+  it('avalanche paga menos juros que bola de neve quando a dívida cara é a maior', () => {
+    const debts = [debt('cartao', 3000, 200, 8), debt('emprestimo', 1000, 100, 2)];
+    const avalanche = simulateAvalanchePayoff(debts, 300);
+    const snowball = simulateSnowballPayoff(debts, 300);
+    expect(avalanche.totalInterestPaid).toBeLessThan(snowball.totalInterestPaid);
+    expect(avalanche.paidOff && snowball.paidOff).toBe(true);
+  });
+
+  it('indica quando a parcela não cobre os juros (dívida impagável)', () => {
+    const result = simulateAvalanchePayoff([debt('rotativo', 10000, 100, 10)], 0);
+    expect(result.paidOff).toBe(false);
+    expect(result.months).toBe(360);
+  });
+
+  it('não altera o array de dívidas recebido', () => {
+    const debts = [debt('a', 500, 100, 5)];
+    simulateAvalanchePayoff(debts, 0);
+    expect(debts[0].totalAmount).toBe(500);
   });
 });

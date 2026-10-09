@@ -116,88 +116,88 @@ export function calculateHealthLevel(
   return 'healthy';
 }
 
+export interface PayoffResult {
+  months: number;
+  totalInterestPaid: number;
+  /** false quando as parcelas não cobrem os juros e a dívida não termina em 30 anos */
+  paidOff: boolean;
+  payoffSchedule: PayoffMonth[];
+}
+
+const MAX_SIMULATION_MONTHS = 360;
+
 /**
- * Simula quitação de dívidas pelo método Avalanche (maior juros primeiro)
+ * Simula a quitação mês a mês com "efeito bola de neve": o orçamento mensal
+ * (soma das parcelas atuais + valor extra) se mantém constante. Cada dívida
+ * recebe sua parcela mínima e todo o restante — inclusive as parcelas que
+ * ficaram livres quando uma dívida foi quitada — vai para a dívida prioritária.
  */
-export function simulateAvalanchePayoff(
-  debts: Debt[],
-  extraMonthlyPayment: number
-): { months: number; totalInterestPaid: number; payoffSchedule: PayoffMonth[] } {
-  if (debts.length === 0) return { months: 0, totalInterestPaid: 0, payoffSchedule: [] };
+function simulatePayoff(debts: Debt[], extraMonthlyPayment: number, priority: (a: Debt, b: Debt) => number): PayoffResult {
+  const active = debts.filter((d) => (d.totalAmount || 0) > 0);
+  if (active.length === 0) return { months: 0, totalInterestPaid: 0, paidOff: true, payoffSchedule: [] };
 
-  // Ordena por maior taxa de juros
-  const sortedDebts = [...debts].sort(
-    (a, b) => b.monthlyInterestRate - a.monthlyInterestRate
-  );
+  const ordered = [...active].sort(priority).map((d) => ({
+    name: d.name,
+    rate: Math.max(0, d.monthlyInterestRate || 0) / 100,
+    minimum: Math.max(0, d.monthlyPayment || 0),
+    remaining: d.totalAmount,
+  }));
 
-  let remainingDebts = sortedDebts.map((d) => ({ ...d, remaining: d.totalAmount }));
-  let totalInterestPaid = 0;
+  const monthlyBudget = ordered.reduce((sum, d) => sum + d.minimum, 0) + Math.max(0, extraMonthlyPayment);
   const payoffSchedule: PayoffMonth[] = [];
+  let totalInterestPaid = 0;
   let month = 0;
 
-  while (remainingDebts.some((d) => d.remaining > 0) && month < 360) {
+  while (ordered.some((d) => d.remaining > 0.005) && month < MAX_SIMULATION_MONTHS) {
     month++;
-    let extra = extraMonthlyPayment;
-    const monthData: PayoffMonth = { month, debts: [], totalRemaining: 0 };
 
-    remainingDebts = remainingDebts.map((debt) => {
-      if (debt.remaining <= 0) return debt;
-
-      // Aplica juros
-      const interest = debt.remaining * (debt.monthlyInterestRate / 100);
+    for (const debt of ordered) {
+      if (debt.remaining <= 0) continue;
+      const interest = debt.remaining * debt.rate;
       totalInterestPaid += interest;
       debt.remaining += interest;
+    }
 
-      // Pagamento mínimo + extra (apenas para primeira dívida da lista)
-      const payment = debt.monthlyPayment + extra;
-      extra = Math.max(0, extra - (payment - debt.monthlyPayment));
-      debt.remaining = Math.max(0, debt.remaining - payment);
+    let available = monthlyBudget;
+    // 1º: parcelas mínimas
+    for (const debt of ordered) {
+      if (debt.remaining <= 0) continue;
+      const payment = Math.min(debt.minimum, debt.remaining, available);
+      debt.remaining -= payment;
+      available -= payment;
+    }
+    // 2º: sobra vai para as dívidas na ordem de prioridade
+    for (const debt of ordered) {
+      if (available <= 0) break;
+      if (debt.remaining <= 0) continue;
+      const payment = Math.min(debt.remaining, available);
+      debt.remaining -= payment;
+      available -= payment;
+    }
 
-      return debt;
+    payoffSchedule.push({
+      month,
+      debts: ordered.map((d) => ({ name: d.name, remaining: Math.max(0, d.remaining) })),
+      totalRemaining: ordered.reduce((s, d) => s + Math.max(0, d.remaining), 0),
     });
-
-    monthData.debts = remainingDebts.map((d) => ({ name: d.name, remaining: d.remaining }));
-    monthData.totalRemaining = remainingDebts.reduce((s, d) => s + d.remaining, 0);
-    payoffSchedule.push(monthData);
-
-    if (remainingDebts.every((d) => d.remaining <= 0)) break;
   }
 
-  return { months: month, totalInterestPaid, payoffSchedule };
+  const paidOff = ordered.every((d) => d.remaining <= 0.005);
+  return { months: month, totalInterestPaid, paidOff, payoffSchedule };
 }
 
 /**
- * Simula quitação pelo método Bola de Neve (menor valor primeiro)
+ * Simula quitação de dívidas pelo método Avalanche (maior juros primeiro)
  */
-export function simulateSnowballPayoff(
-  debts: Debt[],
-  extraMonthlyPayment: number
-): { months: number; totalInterestPaid: number } {
-  if (debts.length === 0) return { months: 0, totalInterestPaid: 0 };
+export function simulateAvalanchePayoff(debts: Debt[], extraMonthlyPayment: number): PayoffResult {
+  return simulatePayoff(debts, extraMonthlyPayment, (a, b) => (b.monthlyInterestRate || 0) - (a.monthlyInterestRate || 0));
+}
 
-  const sortedDebts = [...debts]
-    .sort((a, b) => a.totalAmount - b.totalAmount)
-    .map((d) => ({ ...d, remaining: d.totalAmount }));
-
-  let totalInterestPaid = 0;
-  let month = 0;
-
-  while (sortedDebts.some((d) => d.remaining > 0) && month < 360) {
-    month++;
-    let extra = extraMonthlyPayment;
-
-    sortedDebts.forEach((debt) => {
-      if (debt.remaining <= 0) return;
-      const interest = debt.remaining * (debt.monthlyInterestRate / 100);
-      totalInterestPaid += interest;
-      debt.remaining += interest;
-      const payment = debt.monthlyPayment + extra;
-      extra = Math.max(0, extra - (payment - debt.monthlyPayment));
-      debt.remaining = Math.max(0, debt.remaining - payment);
-    });
-  }
-
-  return { months: month, totalInterestPaid };
+/**
+ * Simula quitação pelo método Bola de Neve (menor saldo primeiro)
+ */
+export function simulateSnowballPayoff(debts: Debt[], extraMonthlyPayment: number): PayoffResult {
+  return simulatePayoff(debts, extraMonthlyPayment, (a, b) => (a.totalAmount || 0) - (b.totalAmount || 0));
 }
 
 /**

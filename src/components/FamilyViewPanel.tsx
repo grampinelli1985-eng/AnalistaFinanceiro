@@ -10,6 +10,7 @@ import {
   BarElement,
   Tooltip,
   Legend,
+  type TooltipItem,
 } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
 import type { Profile, FamilyBalance, FinancialData, FinancialBalance } from '../types/financial';
@@ -17,7 +18,6 @@ import { HEALTH_LEVELS } from '../types/financial';
 import { formatCurrency } from '../utils/formatters';
 import { calculateFinancialBalance } from '../utils/financialCalculations';
 import { loadFinancialData } from '../services/storageService';
-import jsPDF from 'jspdf';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
@@ -38,7 +38,7 @@ const darkTooltip = {
 
 const FamilyViewPanel: React.FC<FamilyViewPanelProps> = ({ profiles, onClose }) => {
   const [breakdowns, setBreakdowns] = useState<{ profile: Profile; data: FinancialData; balance: FinancialBalance }[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => profiles.filter((p) => p.allowFamilyView).length >= 2);
 
   // Filtra apenas perfis que autorizaram a visão familiar e têm dados financeiros
   const participatingProfiles = useMemo(
@@ -76,8 +76,6 @@ const FamilyViewPanel: React.FC<FamilyViewPanelProps> = ({ profiles, onClose }) 
 
     if (participatingProfiles.length >= 2) {
       fetchFamilyData();
-    } else {
-      setIsLoading(false);
     }
 
     return () => {
@@ -150,7 +148,7 @@ const FamilyViewPanel: React.FC<FamilyViewPanelProps> = ({ profiles, onClose }) 
         ticks: {
           color: '#94a3b8',
           font: { size: 10, family: 'Inter' },
-          callback: (v: any) => `R$ ${(v / 1000).toFixed(0)}k`,
+          callback: (v: string | number) => `R$ ${(Number(v) / 1000).toFixed(0)}k`,
         },
       },
     },
@@ -160,14 +158,16 @@ const FamilyViewPanel: React.FC<FamilyViewPanelProps> = ({ profiles, onClose }) 
       },
       tooltip: {
         ...darkTooltip,
-        callbacks: { label: (ctx: any) => ` ${formatCurrency(ctx.parsed.y)}` },
+        callbacks: { label: (ctx: TooltipItem<'bar'>) => ` ${formatCurrency(ctx.parsed.y ?? 0)}` },
       },
     },
   };
 
   // Exportar PDF familiar
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     if (!familyBalance) return;
+    // Carregado sob demanda: o jsPDF é pesado e só é usado na exportação
+    const { default: jsPDF } = await import('jspdf');
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
@@ -257,7 +257,7 @@ const FamilyViewPanel: React.FC<FamilyViewPanelProps> = ({ profiles, onClose }) 
     addLine('2. DETALHAMENTO INDIVIDUAL POR PERFIL', 14, true, [99, 102, 241], 4);
     addSep();
     familyBalance.profileBreakdowns.forEach((b) => {
-      addLine(`${b.profile.avatar} ${b.profile.name} (Diagnóstico: ${HEALTH_LEVELS[b.balance.healthLevel].label})`, 12, true, [99, 102, 241], 2);
+      addLine(`${b.profile.name} (Diagnóstico: ${HEALTH_LEVELS[b.balance.healthLevel].label})`, 12, true, [99, 102, 241], 2);
       addLine(`• Renda: ${formatCurrency(b.balance.totalIncome)} | Despesas: ${formatCurrency(b.balance.totalExpenses)}`, 10, false, [60, 60, 60], 1.5);
       addLine(`• Saldo Mensal: ${formatCurrency(b.balance.monthlyBalance)} | Dívidas: ${formatCurrency(b.balance.totalDebts)}`, 10, false, [60, 60, 60], 1.5);
       addLine(`• Reservas: ${formatCurrency(b.financialData.savings.currentAmount)} (${b.balance.savingsInMonths.toFixed(1)} meses de cobertura)`, 10, false, [60, 60, 60], 4);

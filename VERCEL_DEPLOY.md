@@ -17,17 +17,29 @@ Para que a Vercel consiga publicar o seu site, o código precisa estar em um rep
 Na tela "Configure Project", antes de clicar em "Deploy", você precisa descer até a seção **"Environment Variables"** (Variáveis de Ambiente).
 Aqui é onde conectamos o seu Supabase ao aplicativo na nuvem.
 
-Abra o seu arquivo `.env` local e copie as duas chaves que estão lá. Adicione uma por vez no painel da Vercel:
+Cadastre as variáveis abaixo (Production e Preview):
 
-1. **Nome:** `VITE_SUPABASE_URL`
-   **Valor:** (Cole aqui a URL do seu Supabase que começa com https://...)
-   Clique em "Add".
+| Variável | Obrigatória | Para que serve |
+|---|---|---|
+| `VITE_SUPABASE_URL` | Sim | URL do projeto Supabase (usada pelo navegador e pelo servidor) |
+| `VITE_SUPABASE_ANON_KEY` | Sim | Chave pública do Supabase (navegador) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Sim | Chave de serviço do Supabase — **só no servidor**, nunca no código do navegador |
+| `GEMINI_API_KEY` | Sim | Chave da API do Google Gemini (fica só no servidor) |
+| `ASAAS_API_KEY` | Sim | Chave da API do Asaas (pagamentos) |
+| `ASAAS_BASE_URL` | Não | Padrão: sandbox (`https://api-sandbox.asaas.com/v3`). Em produção real: `https://api.asaas.com/v3` (com a chave de produção) |
+| `ASAAS_WEBHOOK_TOKEN` | Recomendada | Mesmo token configurado no webhook do painel do Asaas; o servidor exige o cabeçalho `asaas-access-token` |
+| `GEMINI_MODEL` | Não | Modelo do Gemini (padrão: `gemini-flash-latest`) |
+| `ASAAS_MOCK` | Não | `true` simula o gateway de pagamento. **Ignorada em produção.** Use só em desenvolvimento/preview |
 
-2. **Nome:** `VITE_SUPABASE_ANON_KEY`
-   **Valor:** (Cole aqui a chave gigante que começa com eyJhb...)
-   Clique em "Add".
+*O webhook do Asaas é sempre conferido na API do Asaas antes de liberar um plano — um pagamento só ativa a assinatura se o Asaas confirmar que ele foi recebido.*
 
-*Nota: Não é necessário adicionar a chave da API do Claude aqui. Cada usuário vai inserir sua própria chave diretamente na tela do aplicativo, e ela será armazenada apenas no navegador deles.*
+## Passo 3.1: Banco de dados (Supabase)
+No painel do Supabase, abra **SQL Editor → New query** e execute, nesta ordem:
+1. `api/schema.sql` (planos, assinaturas, controle do beta) — se ainda não foi executado.
+2. `supabase/migrations/20261009_security_hardening.sql` (RLS, proteção das tabelas de cobrança, rate limit, contador atômico). O script pode ser executado mais de uma vez.
+
+## Passo 3.2: Webhook do Asaas
+No painel do Asaas: **Integrações → Webhooks**, URL `https://SEU-DOMINIO/api/webhook-asaas`, com os eventos de cobrança (`PAYMENT_*`) e de assinatura (`SUBSCRIPTION_*`). Preencha o **token de autenticação** com o mesmo valor de `ASAAS_WEBHOOK_TOKEN`.
 
 ## Passo 4: Fazer o Deploy
 1. Certifique-se de que o "Framework Preset" está como **Vite**.

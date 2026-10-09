@@ -37,9 +37,9 @@ const LoginScreen: React.FC<LoginScreenProps> = () => {
         });
         if (error) throw error;
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error('Erro de Autenticação:', err);
-      setError(err.message || 'Ocorreu um erro.');
+      setError((err instanceof Error ? err.message : '') || 'Ocorreu um erro.');
     } finally {
       setIsLoading(false);
     }

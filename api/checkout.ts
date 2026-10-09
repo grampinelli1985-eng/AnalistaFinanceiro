@@ -1,33 +1,27 @@
-import { createClient } from '@supabase/supabase-js';
+import { env, jsonResponse, getSupabaseAdmin, getAuthUser, readJsonBody } from './_lib/server.js';
 
 export const maxDuration = 30;
 
-declare const process: {
-  env: {
-    VITE_SUPABASE_URL?: string;
-    SUPABASE_SERVICE_ROLE_KEY?: string;
-    ASAAS_API_KEY?: string;
-  };
-};
+const PAID_PLANS = new Set(['basic', 'family']);
+const METHODS = new Set(['pix', 'boleto', 'cartao']);
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+interface CardInfo {
+  holderName?: string;
+  number?: string;
+  expiryMonth?: string;
+  expiryYear?: string;
+  ccv?: string;
+  postalCode?: string;
+  addressNumber?: string;
+  phone?: string;
+}
 
-// Sandbox correto: api-sandbox.asaas.com (não "sandbox.asaas.com/api")
-const ASAAS_BASE_URL = 'https://api-sandbox.asaas.com/v3';
-
-async function getAuthUser(req: Request) {
-  if (!supabaseUrl || !serviceKey) return null;
-  const supabase = createClient(supabaseUrl, serviceKey);
-
-  const authHeader = req.headers.get('Authorization') || '';
-  const token = authHeader.replace('Bearer ', '').trim();
-  
-  if (!token) return null;
-  
-  const { data: { user }, error } = await supabase.auth.getUser(token);
-  if (error || !user) return null;
-  return user;
+interface CheckoutBody {
+  planId?: unknown;
+  method?: unknown;
+  installments?: unknown;
+  cardInfo?: CardInfo;
+  cpfCnpj?: unknown;
 }
 
 async function getFirstPaymentId(subscriptionId: string, headers: Record<string, string>): Promise<string | null> {
@@ -35,7 +29,7 @@ async function getFirstPaymentId(subscriptionId: string, headers: Record<string,
   // Tenta algumas vezes com espera antes de desistir.
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
-      const res = await fetch(`${ASAAS_BASE_URL}/subscriptions/${subscriptionId}/payments`, { headers });
+      const res = await fetch(`${env.asaasBaseUrl}/subscriptions/${subscriptionId}/payments`, { headers });
       if (res.ok) {
         const data = await res.json();
         const id = data?.data?.[0]?.id;
@@ -49,39 +43,35 @@ async function getFirstPaymentId(subscriptionId: string, headers: Record<string,
   return null;
 }
 
-export async function POST(req: Request) {
-  if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
-  }
-
+export async function POST(req: Request): Promise<Response> {
   try {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) {
+      console.error('Checkout: SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY não configurados.');
+      return jsonResponse({ error: 'Servidor não configurado corretamente.' }, 500);
+    }
+
     const user = await getAuthUser(req);
     if (!user) {
-      return new Response(JSON.stringify({ error: 'Não autorizado. Faça login novamente.' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: 'Não autorizado. Faça login novamente.' }, 401);
     }
 
-    const { planId, method, installments, cardInfo, cpfCnpj } = await req.json();
+    const parsed = await readJsonBody<CheckoutBody>(req, 20_000);
+    if ('error' in parsed) return parsed.error;
+    const { planId, method, installments, cardInfo, cpfCnpj } = parsed.body;
 
-    if (!cpfCnpj || cpfCnpj.replace(/\D/g, '').length < 11) {
-      return new Response(JSON.stringify({ error: 'CPF ou CNPJ do cliente é obrigatório e precisa ser válido.' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    const cpfDigits = typeof cpfCnpj === 'string' ? cpfCnpj.replace(/\D/g, '') : '';
+    if (cpfDigits.length !== 11 && cpfDigits.length !== 14) {
+      return jsonResponse({ error: 'CPF ou CNPJ do cliente é obrigatório e precisa ser válido.' }, 400);
     }
-
-    if (!planId || !method) {
-      return new Response(JSON.stringify({ error: 'Plano e método de pagamento são obrigatórios.' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    if (typeof planId !== 'string' || !PAID_PLANS.has(planId) || typeof method !== 'string' || !METHODS.has(method)) {
+      return jsonResponse({ error: 'Plano e método de pagamento são obrigatórios.' }, 400);
     }
+    if (method === 'cartao' && (!cardInfo?.number || !cardInfo.holderName || !cardInfo.ccv)) {
+      return jsonResponse({ error: 'Dados do cartão incompletos.' }, 400);
+    }
+    const installmentCount = Math.min(12, Math.max(1, Number(installments) || 1));
 
-    const supabase = createClient(supabaseUrl, serviceKey);
-
-    // Buscar plano
     const { data: plan, error: planError } = await supabase
       .from('plans')
       .select('*')
@@ -89,56 +79,46 @@ export async function POST(req: Request) {
       .single();
 
     if (planError || !plan) {
-      return new Response(JSON.stringify({ error: 'Plano não encontrado.' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: 'Plano não encontrado.' }, 400);
     }
 
-    // Buscar ou criar assinatura
-    let { data: subscription, error: subError } = await supabase
+    // Buscar ou criar assinatura local
+    const { data: existingSubscription, error: subError } = await supabase
       .from('subscriptions')
       .select('*')
       .eq('account_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (subError) {
-      return new Response(JSON.stringify({ error: 'Erro ao buscar assinatura.' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      console.error('Checkout: erro ao buscar assinatura:', subError);
+      return jsonResponse({ error: 'Erro ao buscar assinatura.' }, 500);
     }
 
+    let subscription = existingSubscription;
     if (!subscription) {
-      // Criar nova assinatura
+      // Sem acesso até o pagamento ser confirmado pelo webhook
       const { data: newSub, error: createError } = await supabase
         .from('subscriptions')
-        .insert([{
-          account_id: user.id,
-          plan_id: planId,
-          status: 'past_due' // pendente de pagamento
-        }])
+        .insert([{ account_id: user.id, plan_id: planId, status: 'blocked' }])
         .select()
         .single();
 
       if (createError || !newSub) {
-        return new Response(JSON.stringify({ error: 'Erro ao criar assinatura no banco.' }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        console.error('Checkout: erro ao criar assinatura:', createError);
+        return jsonResponse({ error: 'Erro ao criar assinatura no banco.' }, 500);
       }
       subscription = newSub;
     }
 
-    const asaasApiKey = process.env.ASAAS_API_KEY;
-
-    // --- SE NÃO HOUVER API KEY DO ASAAS, SIMULA O GATEWAY ---
-    if (!asaasApiKey) {
-      console.log('Asaas API Key não configurada. Executando modo SIMULAÇÃO.');
+    // --- MODO SIMULAÇÃO (somente com ASAAS_MOCK=true e fora de produção) ---
+    if (env.asaasMock) {
+      console.log('Checkout em modo SIMULAÇÃO (ASAAS_MOCK=true).');
 
       if (method === 'pix') {
         const mockQrCode = '00020126580014br.gov.bcb.pix0136mock-pix-key-for-analista-financeiro-ia520400005303986540559.905802BR5913Analista IA6009Sao Paulo62070503***6304ABCD';
-        return new Response(JSON.stringify({
+        return jsonResponse({
           success: true,
           method: 'pix',
           amount: plan.price_cents / 100,
@@ -146,124 +126,114 @@ export async function POST(req: Request) {
           qrCodeImage: 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(mockQrCode),
           copiaECola: mockQrCode,
           subscriptionId: subscription.id,
-        }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
+          simulated: true,
         });
       }
 
       if (method === 'boleto') {
-        const mockBarcode = '00190.00009 01234.567890 12345.678901 2 9876000000' + plan.price_cents;
-        return new Response(JSON.stringify({
+        return jsonResponse({
           success: true,
           method: 'boleto',
           amount: plan.price_cents / 100,
-          barcode: mockBarcode,
+          barcode: '00190.00009 01234.567890 12345.678901 2 9876000000' + plan.price_cents,
           dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR'),
           subscriptionId: subscription.id,
-        }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
+          simulated: true,
         });
       }
 
-      if (method === 'cartao') {
-        // Simular aprovação imediata do cartão
-        const { error: updateError } = await supabase
-          .from('subscriptions')
-          .update({
-            status: 'active',
-            plan_id: planId,
-            trial_started_at: null,
-            trial_ends_at: null,
-            gateway: 'asaas_mock',
-            gateway_subscription_id: 'sub_mock_' + Math.random().toString(36).substring(7),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', subscription.id);
+      // Cartão: aprovação imediata simulada
+      const { error: updateError } = await supabase
+        .from('subscriptions')
+        .update({
+          status: 'active',
+          plan_id: planId,
+          trial_started_at: null,
+          trial_ends_at: null,
+          gateway: 'asaas_mock',
+          gateway_subscription_id: 'sub_mock_' + crypto.randomUUID(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', subscription.id);
 
-        if (updateError) {
-          return new Response(JSON.stringify({ error: 'Erro ao atualizar assinatura.' }), { status: 500 });
-        }
-
-        // Criar transação de pagamento
-        await supabase
-          .from('payment_transactions')
-          .insert([{
-            subscription_id: subscription.id,
-            gateway_transaction_id: 'pay_mock_' + Math.random().toString(36).substring(7),
-            method: 'cartao',
-            installments: installments || 1,
-            amount_cents: plan.price_cents,
-            status: 'paid',
-            paid_at: new Date().toISOString()
-          }]);
-
-        return new Response(JSON.stringify({
-          success: true,
-          method: 'cartao',
-          message: 'Pagamento aprovado com sucesso! Plano ativo.',
-          subscriptionId: subscription.id,
-        }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
+      if (updateError) {
+        return jsonResponse({ error: 'Erro ao atualizar assinatura.' }, 500);
       }
+
+      await supabase.from('payment_transactions').insert([{
+        subscription_id: subscription.id,
+        gateway_transaction_id: 'pay_mock_' + crypto.randomUUID(),
+        method: 'cartao',
+        installments: installmentCount,
+        amount_cents: plan.price_cents,
+        status: 'paid',
+        paid_at: new Date().toISOString(),
+      }]);
+
+      return jsonResponse({
+        success: true,
+        method: 'cartao',
+        message: 'Pagamento aprovado com sucesso! Plano ativo.',
+        subscriptionId: subscription.id,
+        simulated: true,
+      });
     }
 
-    // --- SE HOUVER API KEY DO ASAAS, INTEGRA COM O ASAAS REAL ---
+    if (!env.asaasApiKey) {
+      console.error('Checkout: ASAAS_API_KEY não configurada.');
+      return jsonResponse({ error: 'Pagamentos indisponíveis no momento. Tente novamente mais tarde.' }, 503);
+    }
+
+    // --- INTEGRAÇÃO REAL COM O ASAAS ---
     const headers = {
       'Content-Type': 'application/json',
-      'access_token': asaasApiKey,
+      access_token: env.asaasApiKey,
     };
 
-    // 1. Criar ou Obter Cliente no Asaas
+    // 1. Criar ou obter cliente no Asaas
     const customerPayload = {
-      name: user.user_metadata?.name || 'Cliente Analista Financeiro',
+      name: (user.user_metadata?.name as string | undefined) || 'Cliente Analista Financeiro',
       email: user.email,
-      cpfCnpj: cpfCnpj.replace(/\D/g, ''),
+      cpfCnpj: cpfDigits,
       externalReference: user.id,
     };
 
-    const customerRes = await fetch(`${ASAAS_BASE_URL}/customers?email=` + encodeURIComponent(user.email || ''), {
-      method: 'GET',
-      headers,
-    });
-    
-    let customerData = await customerRes.json();
-    let customerId = customerData.data?.[0]?.id;
+    const customerRes = await fetch(`${env.asaasBaseUrl}/customers?externalReference=${encodeURIComponent(user.id)}`, { headers });
+    const customerData = customerRes.ok ? await customerRes.json() : null;
+    let customerId: string | undefined = customerData?.data?.[0]?.id;
 
     if (!customerId) {
-      const createCustRes = await fetch(`${ASAAS_BASE_URL}/customers`, {
+      const createCustRes = await fetch(`${env.asaasBaseUrl}/customers`, {
         method: 'POST',
         headers,
         body: JSON.stringify(customerPayload),
       });
-      const newCust = await createCustRes.json();
-      customerId = newCust.id;
+      const newCust = await createCustRes.json().catch(() => null);
+      customerId = newCust?.id;
       if (!customerId) {
-        throw new Error('Falha ao criar cliente no Asaas: ' + JSON.stringify(newCust));
+        console.error('Checkout: falha ao criar cliente no Asaas:', JSON.stringify(newCust?.errors ?? newCust));
+        return jsonResponse({ error: newCust?.errors?.[0]?.description || 'Não foi possível cadastrar o cliente no gateway de pagamento.' }, 400);
       }
     } else {
-      // Cliente já existia (ex: tentativa de teste anterior) — garante que o
-      // CPF/CNPJ está sincronizado, já que pode ter ficado vazio numa tentativa
-      // anterior a essa correção.
-      await fetch(`${ASAAS_BASE_URL}/customers/${customerId}`, {
+      // Mantém nome e CPF/CNPJ sincronizados com o que foi informado agora
+      await fetch(`${env.asaasBaseUrl}/customers/${customerId}`, {
         method: 'PUT',
         headers,
         body: JSON.stringify({ name: customerPayload.name, cpfCnpj: customerPayload.cpfCnpj }),
       });
     }
 
-    // 2. Criar Cobrança (Assinatura Recorrente no Asaas)
-    const asaasSubPayload: any = {
+    // 2. Criar a assinatura recorrente no Asaas.
+    // O plano escolhido vai no externalReference e só é aplicado pelo webhook
+    // depois que o pagamento for confirmado.
+    const asaasSubPayload: Record<string, unknown> = {
       customer: customerId,
       billingType: method === 'pix' ? 'PIX' : (method === 'boleto' ? 'BOLETO' : 'CREDIT_CARD'),
       value: plan.price_cents / 100,
       nextDueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 2 dias para pagar
       cycle: 'YEARLY',
       description: 'Assinatura ' + plan.name + ' - Analista Financeiro IA',
-      externalReference: subscription.id,
+      externalReference: `${subscription.id}|${planId}`,
     };
 
     if (method === 'cartao' && cardInfo) {
@@ -277,19 +247,30 @@ export async function POST(req: Request) {
       asaasSubPayload.creditCardHolderInfo = {
         name: cardInfo.holderName,
         email: user.email,
-        cpfCnpj: cpfCnpj.replace(/\D/g, ''),
+        cpfCnpj: cpfDigits,
         postalCode: cardInfo.postalCode,
         addressNumber: cardInfo.addressNumber,
         phone: cardInfo.phone || '11999999999',
       };
     }
 
-    // Se já existir uma assinatura recorrente anterior no Asaas (ex: troca de
-    // plano, ou nova tentativa de pagamento), cancela ela antes de criar a
-    // nova — sem isso, as duas ficariam cobrando em paralelo.
-    if (subscription.gateway_subscription_id) {
+    const subCreateRes = await fetch(`${env.asaasBaseUrl}/subscriptions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(asaasSubPayload),
+    });
+    const asaasSub = await subCreateRes.json().catch(() => null);
+
+    if (!subCreateRes.ok || !asaasSub?.id || asaasSub.errors) {
+      console.error('Checkout: erro ao criar assinatura no Asaas:', JSON.stringify(asaasSub?.errors ?? asaasSub));
+      return jsonResponse({ error: asaasSub?.errors?.[0]?.description || 'Erro ao processar assinatura no gateway de pagamento.' }, 400);
+    }
+
+    // Só depois que a nova cobrança existe, cancela a anterior (troca de plano
+    // ou nova tentativa) — sem isso as duas ficariam cobrando em paralelo.
+    if (subscription.gateway_subscription_id && subscription.gateway === 'asaas') {
       try {
-        await fetch(`${ASAAS_BASE_URL}/subscriptions/${subscription.gateway_subscription_id}`, {
+        await fetch(`${env.asaasBaseUrl}/subscriptions/${subscription.gateway_subscription_id}`, {
           method: 'DELETE',
           headers,
         });
@@ -298,52 +279,32 @@ export async function POST(req: Request) {
       }
     }
 
-    const subCreateRes = await fetch(`${ASAAS_BASE_URL}/subscriptions`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(asaasSubPayload),
-    });
-
-    const asaasSub = await subCreateRes.json();
-
-    if (!subCreateRes.ok || asaasSub.errors) {
-      return new Response(JSON.stringify({ error: asaasSub.errors?.[0]?.description || 'Erro ao processar assinatura no Asaas.' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    // 3. Atualizar Assinatura local com o ID do gateway
+    // 3. Vincula a assinatura local ao ID do gateway (o plano só muda no webhook)
     await supabase
       .from('subscriptions')
       .update({
         gateway: 'asaas',
         gateway_subscription_id: asaasSub.id,
-        plan_id: planId,
         updated_at: new Date().toISOString(),
       })
       .eq('id', subscription.id);
 
-    // 4. Obter dados de pagamento imediato (QR Code PIX ou boleto bancário se não for cartão)
+    // 4. Dados de pagamento imediato (QR Code Pix ou boleto)
     if (method === 'pix') {
       const payId = asaasSub.paymentId || (await getFirstPaymentId(asaasSub.id, headers));
-
       if (!payId) {
-        return new Response(JSON.stringify({
+        return jsonResponse({
           error: 'A cobrança foi criada, mas o Asaas ainda não gerou os dados do Pix. Tente novamente em alguns segundos.',
-        }), { status: 202, headers: { 'Content-Type': 'application/json' } });
+        }, 202);
       }
 
-      const pixRes = await fetch(`${ASAAS_BASE_URL}/payments/${payId}/pixQrCode`, { headers });
+      const pixRes = await fetch(`${env.asaasBaseUrl}/payments/${payId}/pixQrCode`, { headers });
       if (!pixRes.ok) {
-        return new Response(JSON.stringify({ error: 'Não foi possível gerar o QR Code Pix. Tente novamente.' }), {
-          status: 502,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonResponse({ error: 'Não foi possível gerar o QR Code Pix. Tente novamente.' }, 502);
       }
       const pixData = await pixRes.json();
 
-      return new Response(JSON.stringify({
+      return jsonResponse({
         success: true,
         method: 'pix',
         amount: plan.price_cents / 100,
@@ -351,28 +312,24 @@ export async function POST(req: Request) {
         qrCodeImage: 'data:image/png;base64,' + pixData.encodedImage,
         copiaECola: pixData.payload,
         subscriptionId: subscription.id,
-      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      });
     }
 
     if (method === 'boleto') {
       const payId = asaasSub.paymentId || (await getFirstPaymentId(asaasSub.id, headers));
-
       if (!payId) {
-        return new Response(JSON.stringify({
+        return jsonResponse({
           error: 'A cobrança foi criada, mas o Asaas ainda não gerou os dados do boleto. Tente novamente em alguns segundos.',
-        }), { status: 202, headers: { 'Content-Type': 'application/json' } });
+        }, 202);
       }
 
-      const payRes = await fetch(`${ASAAS_BASE_URL}/payments/${payId}`, { headers });
+      const payRes = await fetch(`${env.asaasBaseUrl}/payments/${payId}`, { headers });
       if (!payRes.ok) {
-        return new Response(JSON.stringify({ error: 'Não foi possível obter os dados do boleto. Tente novamente.' }), {
-          status: 502,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonResponse({ error: 'Não foi possível obter os dados do boleto. Tente novamente.' }, 502);
       }
       const payData = await payRes.json();
 
-      return new Response(JSON.stringify({
+      return jsonResponse({
         success: true,
         method: 'boleto',
         amount: plan.price_cents / 100,
@@ -380,21 +337,18 @@ export async function POST(req: Request) {
         dueDate: payData.dueDate,
         bankSlipUrl: payData.bankSlipUrl,
         subscriptionId: subscription.id,
-      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      });
     }
 
-    // Se for cartão
-    return new Response(JSON.stringify({
+    // Cartão: a liberação acontece quando o webhook confirmar o pagamento
+    return jsonResponse({
       success: true,
       method: 'cartao',
-      message: 'Cobrança do cartão processada no Asaas.',
+      message: 'Pagamento enviado. Seu plano será liberado assim que a operadora confirmar.',
       subscriptionId: subscription.id,
-    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-
-  } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message || 'Erro interno no servidor' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
     });
+  } catch (err) {
+    console.error('Erro inesperado em /api/checkout:', err);
+    return jsonResponse({ error: 'Erro interno no servidor.' }, 500);
   }
 }

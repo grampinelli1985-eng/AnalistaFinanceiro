@@ -1,7 +1,8 @@
 import React from 'react';
+import type { ChatBlockReason } from '../services/aiService';
 
 interface UpgradeOverlayProps {
-  reason: 'limit_reached' | 'expired' | 'blocked' | 'past_due_expired' | null;
+  reason: ChatBlockReason | null;
   limit?: number;
   onUpgradeClick: () => void;
   planName?: string;
@@ -42,6 +43,15 @@ const UpgradeOverlay: React.FC<UpgradeOverlayProps> = ({
           description: 'Não conseguimos processar o pagamento da sua assinatura anual e o período de tolerância de 3 dias expirou.',
           subtext: 'Regularize seu pagamento ou faça uma nova assinatura para reativar o chat imediatamente.',
           buttonText: '💳 Regularizar Pagamento',
+          showUpgradeButton: true,
+        };
+      case 'canceled':
+        return {
+          emoji: '📭',
+          title: 'Assinatura Cancelada',
+          description: 'Sua assinatura foi cancelada e o chat foi desativado.',
+          subtext: 'Seus dados e relatórios continuam disponíveis. Assine um plano para voltar a conversar com o analista.',
+          buttonText: '💳 Assinar Novamente',
           showUpgradeButton: true,
         };
       case 'blocked':

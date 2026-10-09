@@ -56,7 +56,7 @@ const LegalModal: React.FC<LegalModalProps> = ({ initialTab = 'terms', onClose }
           {activeTab === 'terms' ? (
             <div className="legal-content">
               <h3 style={{ color: 'var(--color-text-primary)', marginTop: 0 }}>Termos de Uso</h3>
-              <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Última atualização: 16 de Junho de 2026</p>
+              <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Última atualização: 9 de Outubro de 2026</p>
               
               <p>
                 Bem-vindo ao <strong>Analista Financeiro IA</strong>. Ao acessar ou utilizar nossa plataforma, você concorda em cumprir e vincular-se a estes Termos de Uso. Por favor, leia-os com atenção antes de utilizar o serviço.
@@ -88,9 +88,9 @@ const LegalModal: React.FC<LegalModalProps> = ({ initialTab = 'terms', onClose }
                 Para usufruir da sincronização em nuvem, você deve criar uma conta de usuário utilizando a infraestrutura do Supabase Auth. Você é responsável por manter a confidencialidade de sua senha de acesso e por todas as atividades que ocorrem sob sua conta.
               </p>
 
-              <h4 style={{ color: 'var(--color-text-primary)', marginTop: '20px' }}>5. Chave de API de Terceiros</h4>
+              <h4 style={{ color: 'var(--color-text-primary)', marginTop: '20px' }}>5. Inteligência Artificial de Terceiros</h4>
               <p>
-                A inteligência da aplicação é ativada através do fornecimento de sua própria Chave de API do Google Gemini. Esta chave é armazenada de forma local no seu próprio navegador (localStorage) e transmitida diretamente aos servidores do Google apenas para processar suas mensagens, garantindo que o Analista Financeiro IA não armazene sua chave de API em servidores intermediários proprietários.
+                As respostas do analista são geradas pela API do Google Gemini, acessada exclusivamente pelos servidores do Analista Financeiro IA. Você não precisa fornecer nenhuma chave de API, e o conteúdo das suas mensagens é enviado ao Google apenas para gerar as respostas, conforme descrito na Política de Privacidade.
               </p>
 
               <h4 style={{ color: 'var(--color-text-primary)', marginTop: '20px' }}>6. Versão Beta e Limites de Serviço</h4>
@@ -106,7 +106,7 @@ const LegalModal: React.FC<LegalModalProps> = ({ initialTab = 'terms', onClose }
           ) : (
             <div className="legal-content">
               <h3 style={{ color: 'var(--color-text-primary)', marginTop: 0 }}>Política de Privacidade</h3>
-              <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Última atualização: 16 de Junho de 2026</p>
+              <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Última atualização: 9 de Outubro de 2026</p>
               
               <p>
                 Sua privacidade é nossa prioridade máxima. Esta Política de Privacidade descreve como o <strong>Analista Financeiro IA</strong> coleta, armazena, processa e protege seus dados em conformidade com a Lei Geral de Proteção de Dados (LGPD - Lei nº 13.709/18).
@@ -136,14 +136,16 @@ const LegalModal: React.FC<LegalModalProps> = ({ initialTab = 'terms', onClose }
 
               <h4 style={{ color: 'var(--color-text-primary)', marginTop: '20px' }}>3. Compartilhamento e Transferência de Dados</h4>
               <p>
-                O Analista Financeiro IA preza pela minimização de dados. Suas informações financeiras e de conversas são enviadas de forma temporária e segura via API criptografada (HTTPS) ao <strong>Google Gemini API</strong> para processamento da inteligência artificial. Este envio respeita as políticas de uso do Google para desenvolvedores, não sendo permitida a utilização de seus dados privados para treinamento do modelo de inteligência artificial geral.
+                O Analista Financeiro IA preza pela minimização de dados. Suas informações financeiras e de conversas são enviadas de forma temporária e segura via API criptografada (HTTPS) ao <strong>Google Gemini API</strong> para processamento da inteligência artificial. O envio é feito pelos nossos servidores e o tratamento desses dados pelo Google segue os Termos de Serviço da API do Gemini e a Política de Privacidade do Google.
+                <br /><br />
+                <strong>Pagamentos:</strong> as assinaturas são processadas pelo <strong>Asaas</strong> (instituição de pagamento). Para emitir a cobrança, compartilhamos com o Asaas seu nome, e-mail e CPF/CNPJ. Os dados do cartão de crédito são repassados ao Asaas apenas no momento do pagamento e não são armazenados em nossos servidores.
                 <br /><br />
                 Nenhum dado é vendido ou compartilhado com terceiros para fins publicitários ou comerciais.
               </p>
 
               <h4 style={{ color: 'var(--color-text-primary)', marginTop: '20px' }}>4. Armazenamento e Segurança dos Dados</h4>
               <p>
-                Os seus perfis, diagnósticos e históricos são mantidos nos servidores da infraestrutura **Supabase**, sob segurança de nível industrial, políticas de controle de acesso rigorosas (Row Level Security - RLS) e criptografia em trânsito e repouso. A sua chave da API do Gemini fica gravada estritamente no localStorage do seu navegador e não é persistida nos nossos bancos de dados na nuvem.
+                Os seus perfis, diagnósticos e históricos são mantidos nos servidores da infraestrutura **Supabase**, sob segurança de nível industrial, políticas de controle de acesso rigorosas (Row Level Security - RLS) e criptografia em trânsito e repouso. A comunicação com a inteligência artificial é feita exclusivamente pelos nossos servidores — nenhuma chave de API fica armazenada no seu navegador.
               </p>
 
               <h4 style={{ color: 'var(--color-text-primary)', marginTop: '20px' }}>5. Seus Direitos (LGPD - Artigo 18)</h4>

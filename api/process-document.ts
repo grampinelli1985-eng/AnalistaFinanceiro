@@ -14,15 +14,24 @@
 // (muito mais leve) entra no histórico do chat normal a partir daí.
 // ==========================================
 
+import {
+  env,
+  jsonResponse,
+  getSupabaseAdmin,
+  getAuthUser,
+  readJsonBody,
+  checkRateLimit,
+  checkSubscriptionAccess,
+  extractGeminiText,
+  extractTaggedJson,
+  BLOCK_MESSAGES,
+} from './_lib/server.js';
+
 export const maxDuration = 60;
 
-declare const process: {
-  env: {
-    GEMINI_API_KEY?: string;
-  };
-};
-
-const MODEL = 'gemini-flash-latest';
+// Limite de 4,5MB do corpo na Vercel: 3MB de PDF em base64 ≈ 4,2M caracteres
+const MAX_BASE64_CHARS = 4_200_000;
+const MAX_BODY_CHARS = MAX_BASE64_CHARS + 2_000;
 
 const EXTRACTION_SYSTEM_PROMPT = `Você é um extrator de dados financeiros especializado em ler faturas de cartão de crédito e extratos bancários brasileiros em PDF.
 
@@ -68,131 +77,99 @@ Primeiro, um resumo em texto curto e claro do que foi encontrado (2-5 frases, ci
 
 IMPORTANTE: o resumo em texto SEMPRE vem antes da tag <extracted_data>. Nunca omita o texto e envie só o JSON.`;
 
-export async function POST(req: Request) {
-  if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
+interface ProcessDocumentBody {
+  mimeType?: unknown;
+  data?: unknown;
+  fileName?: unknown;
+}
 
+/** Todo PDF começa com "%PDF-", que em base64 é "JVBERi0". */
+export function looksLikePdfBase64(data: string): boolean {
+  return data.startsWith('JVBERi0');
+}
+
+export async function POST(req: Request): Promise<Response> {
   try {
-    const { mimeType, data, fileName } = await req.json();
-
-    if (!mimeType || !data) {
-      return new Response(JSON.stringify({ error: 'mimeType e data (base64) são obrigatórios' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    const supabase = getSupabaseAdmin();
+    if (!env.geminiApiKey || !supabase) {
+      console.error('Variáveis de ambiente ausentes: GEMINI_API_KEY e/ou SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY.');
+      return jsonResponse({ error: 'Servidor não configurado corretamente.' }, 500);
     }
 
-    if (mimeType !== 'application/pdf') {
-      return new Response(JSON.stringify({ error: 'Apenas arquivos PDF são aceitos nesta rota' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    const user = await getAuthUser(req);
+    if (!user) {
+      return jsonResponse({ error: 'Sessão expirada ou inválida. Faça login novamente.' }, 401);
     }
 
-    // Validação defensiva no servidor: ~5MB em base64 ≈ 6.7M caracteres
-    if (typeof data === 'string' && data.length > 7_000_000) {
-      return new Response(JSON.stringify({ error: 'Arquivo muito grande. O limite é de 5MB.' }), {
-        status: 413,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    const parsed = await readJsonBody<ProcessDocumentBody>(req, MAX_BODY_CHARS);
+    if ('error' in parsed) {
+      return parsed.error.status === 413
+        ? jsonResponse({ error: 'Arquivo muito grande. O limite é de 3MB.' }, 413)
+        : parsed.error;
+    }
+    const { mimeType, data, fileName } = parsed.body;
+
+    if (mimeType !== 'application/pdf' || typeof data !== 'string' || !data) {
+      return jsonResponse({ error: 'Apenas arquivos PDF são aceitos nesta rota' }, 400);
+    }
+    if (data.length > MAX_BASE64_CHARS) {
+      return jsonResponse({ error: 'Arquivo muito grande. O limite é de 3MB.' }, 413);
+    }
+    if (!looksLikePdfBase64(data)) {
+      return jsonResponse({ error: 'O arquivo enviado não parece ser um PDF válido.' }, 400);
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return new Response(JSON.stringify({ error: 'GEMINI_API_KEY environment variable is not configured on the server.' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    if (!(await checkRateLimit(supabase, user.id))) {
+      return jsonResponse({ error: 'Muitas requisições em pouco tempo. Aguarde um pouco e tente novamente.' }, 429);
     }
 
-    const apiMessages = [
-      {
-        role: "user",
-        parts: [
-          { text: `Leia e extraia os dados financeiros deste documento: ${fileName || 'documento.pdf'}` },
-          { inline_data: { mime_type: mimeType, data } },
-        ]
-      }
-    ];
+    const access = await checkSubscriptionAccess(supabase, user.id);
+    if (!access.allowed) {
+      return jsonResponse({ error: BLOCK_MESSAGES[access.reason] }, 403);
+    }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+    const safeFileName = typeof fileName === 'string' ? fileName.slice(0, 200) : 'documento.pdf';
 
-    const response = await fetch(url, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${env.geminiModel}:generateContent`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey
+        'x-goog-api-key': env.geminiApiKey,
       },
       body: JSON.stringify({
-        systemInstruction: {
-          parts: [{ text: EXTRACTION_SYSTEM_PROMPT }]
-        },
-        contents: apiMessages,
+        systemInstruction: { parts: [{ text: EXTRACTION_SYSTEM_PROMPT }] },
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { text: `Leia e extraia os dados financeiros deste documento: ${safeFileName}` },
+              { inline_data: { mime_type: 'application/pdf', data } },
+            ],
+          },
+        ],
         generationConfig: {
           temperature: 0.1, // mais baixa que o chat normal — extração precisa ser literal, não criativa
-          maxOutputTokens: 4096,
+          maxOutputTokens: 8192,
         },
       }),
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: { message: 'Erro desconhecido' } }));
-      const message = error?.error?.message || `Erro HTTP ${response.status}`;
-      return new Response(JSON.stringify({ error: message }), {
-        status: response.status,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      const errorBody = await response.text().catch(() => '');
+      console.error(`Gemini respondeu ${response.status} ao processar documento:`, errorBody.slice(0, 2000));
+      const status = response.status === 429 ? 503 : 502;
+      return jsonResponse({ error: 'Não foi possível processar o documento agora. Tente novamente em alguns instantes.' }, status);
     }
 
     const result = await response.json();
-    const rawContent: string = result.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const { visibleText, json: extractedData } = extractTaggedJson(extractGeminiText(result), 'extracted_data');
 
-    function cleanJsonString(str: string): string {
-      let cleaned = str.trim();
-      cleaned = cleaned.replace(/```[a-zA-Z]*\n?/gi, '').replace(/```/g, '').trim();
-      cleaned = cleaned.replace(/(?<!:)\/\/.*$/gm, '');
-      cleaned = cleaned.replace(/\/\*[\s\S]*?\*\//g, '');
-      cleaned = cleaned.replace(/,\s*([\]}])/g, '$1');
-      return cleaned.trim();
-    }
-
-    let extractedData: string | null = null;
-    const match = rawContent.match(/<extracted_data>([\s\S]*?)<\/extracted_data>/i);
-    if (match) {
-      try {
-        const cleaned = cleanJsonString(match[1].trim());
-        JSON.parse(cleaned); // valida que é JSON parseável
-        extractedData = cleaned;
-      } catch (e) {
-        console.warn('Gemini retornou um bloco <extracted_data> com JSON inválido:', e);
-        extractedData = null;
-      }
-    }
-
-    // Remove o bloco JSON da mensagem visível — só o resumo em texto é mostrado ao usuário
-    let summaryText = rawContent
-      .replace(/<extracted_data>[\s\S]*?<\/extracted_data>/gi, '')
-      .trim();
-    if (/<extracted_data>/i.test(summaryText)) {
-      summaryText = summaryText.replace(/<extracted_data>[\s\S]*/gi, '').trim();
-    }
-
-    return new Response(JSON.stringify({
-      summary: summaryText || 'Documento processado, mas não foi possível gerar um resumo.',
+    return jsonResponse({
+      summary: visibleText || 'Documento processado, mas não foi possível gerar um resumo.',
       extractedData,
-    }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
     });
-
-  } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message || 'Internal server error' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+  } catch (err) {
+    console.error('Erro inesperado em /api/process-document:', err);
+    return jsonResponse({ error: 'Erro interno do servidor.' }, 500);
   }
 }

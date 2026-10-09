@@ -16,7 +16,7 @@ declare const process: {
 
 export const maxDuration = 10;
 
-export async function GET(req: Request) {
+export async function GET() {
   try {
     const supabaseUrl = process.env.VITE_SUPABASE_URL;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -55,7 +55,7 @@ export async function GET(req: Request) {
         'Cache-Control': 's-maxage=10, stale-while-revalidate=5', // cache menor de 10s para evitar inconsistências durante cadastros simultâneos
       },
     });
-  } catch (err) {
+  } catch {
     return new Response(JSON.stringify({ count: null, limit: 50 }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },

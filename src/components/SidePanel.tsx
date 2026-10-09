@@ -2,12 +2,14 @@
 // PAINEL LATERAL — RESUMO FINANCEIRO
 // ==========================================
 
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import type { FinancialData, FinancialBalance, MonthlySnapshot } from '../types/financial';
 import { HEALTH_LEVELS } from '../types/financial';
 import { formatCurrency, formatPercent, classifyCommitmentIndex } from '../utils/formatters';
 import type { SubscriptionData } from '../services/storageService';
-import ChartsPanel from './ChartsPanel';
+// Chart.js só é baixado quando a aba de gráficos é aberta
+const ChartsPanel = lazy(() => import('./ChartsPanel'));
+import DebtStrategyCard from './DebtStrategyCard';
 
 interface SidePanelProps {
   financialData: FinancialData | null;
@@ -260,6 +262,10 @@ const SidePanel: React.FC<SidePanelProps> = ({
                   </div>
                 )}
 
+                {financialData && financialData.debts.length > 0 && (
+                  <DebtStrategyCard debts={financialData.debts} monthlySurplus={balance.monthlyBalance} />
+                )}
+
                 {/* Gastos Sazonais */}
                 {financialData && financialData.seasonalExpenses && financialData.seasonalExpenses.length > 0 && (
                   <div className="card">
@@ -358,11 +364,13 @@ const SidePanel: React.FC<SidePanelProps> = ({
 
         {/* ── ABA GRÁFICOS ─────────────────────────── */}
         {activeTab === 'graficos' && (
-          <ChartsPanel
-            financialData={financialData}
-            balance={balance}
-            snapshots={snapshots}
-          />
+          <Suspense fallback={<div className="empty-state"><div className="spinner" /></div>}>
+            <ChartsPanel
+              financialData={financialData}
+              balance={balance}
+              snapshots={snapshots}
+            />
+          </Suspense>
         )}
 
         {/* ── ABA HISTÓRICO ────────────────────────── */}

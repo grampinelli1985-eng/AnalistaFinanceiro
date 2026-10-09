@@ -3,7 +3,7 @@
 // Supabase Sync + Auth + Múltiplos Perfis
 // ==========================================
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, lazy, Suspense } from 'react';
 import './index.css';
 
 // Componentes
@@ -12,15 +12,25 @@ import ChatPanel from './components/ChatPanel';
 import SidePanel from './components/SidePanel';
 import ProfileSelectScreen from './components/ProfileSelectScreen';
 import CreateProfileModal from './components/CreateProfileModal';
-import FamilyViewPanel from './components/FamilyViewPanel';
 import ProfileBadge from './components/ProfileBadge';
-import LandingPage from './components/LandingPage';
 import ConsentModal from './components/ConsentModal';
 import SettingsModal from './components/SettingsModal';
-import CheckoutModal from './components/CheckoutModal';
+
+// Carregados sob demanda (code splitting): visitantes não baixam o app e
+// usuários logados não baixam a landing page.
+const LandingPage = lazy(() => import('./components/LandingPage'));
+const FamilyViewPanel = lazy(() => import('./components/FamilyViewPanel'));
+const CheckoutModal = lazy(() => import('./components/CheckoutModal'));
+
+const lazyFallback = (
+  <div className="profile-select-screen" style={{ justifyContent: 'center' }}>
+    <div className="profile-select-logo" style={{ margin: '0 auto', animation: 'logoGlow 1s ease-in-out infinite alternate' }}>🤖</div>
+  </div>
+);
 
 // Serviços e Lib
 import { supabase } from './lib/supabase';
+import type { Session } from '@supabase/supabase-js';
 import { sendMessage, OPENING_MESSAGE } from './services/aiService';
 import {
   saveProfile,
@@ -39,7 +49,10 @@ import {
   recoverOrphanedData,
   exportAllUserData,
   deleteAllUserData,
+  loadSubscription,
+  type SubscriptionData,
 } from './services/storageService';
+import type { ChatBlockReason } from './services/aiService';
 
 // Utilitários e Tipos
 import { calculateFinancialBalance } from './utils/financialCalculations';
@@ -51,9 +64,8 @@ import type {
   MonthlySnapshot,
   Profile,
 } from './types/financial';
+import { HEALTH_LEVELS } from './types/financial';
 
-// PDF
-import jsPDF from 'jspdf';
 
 // ── Tipos de tela ──────────────────────────
 type AppView = 'landing' | 'login' | 'profile-select' | 'main-app' | 'family-view' | 'checkout-required';
@@ -64,7 +76,7 @@ type AppView = 'landing' | 'login' | 'profile-select' | 'main-app' | 'family-vie
 const App: React.FC = () => {
   // ── Navegação e Autenticação ──────────────
   const [appView, setAppView] = useState<AppView>('landing');
-  const [session, setSession] = useState<any>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
   const hasInitializedRef = useRef(false);
   const [needsConsent, setNeedsConsent] = useState(false);
@@ -86,6 +98,10 @@ const App: React.FC = () => {
   // ── Estado do Chat (por perfil) ───────────
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoadingChat, setIsLoadingChat] = useState(false);
+  const [chatBlockReason, setChatBlockReason] = useState<ChatBlockReason | null>(null);
+
+  // ── Assinatura ────────────────────────────
+  const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
 
   // ── Estado Financeiro (por perfil) ────────
   const [financialData, setFinancialData] = useState<FinancialData | null>(null);
@@ -124,37 +140,8 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // ── Inicialização de Sessão ────────────────
-  useEffect(() => {
-    // Verificar sessão atual
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) {
-        initUserData();
-      } else {
-        setAppView('landing');
-        setIsInitializing(false);
-      }
-    });
-
-    // Escutar mudanças de autenticação
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) {
-        initUserData();
-      } else {
-        setAppView('landing');
-        setIsInitializing(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
   // ── Inicialização Pós-Login ────────────────
-  const initUserData = async () => {
+  const initUserData = useCallback(async () => {
     if (hasInitializedRef.current) return;
     hasInitializedRef.current = true;
 
@@ -178,16 +165,14 @@ const App: React.FC = () => {
     // ── Verificação de assinatura ──────────────
     // Bloqueia o acesso ao app se a assinatura não estiver em trial/ativa.
     // (status possíveis: 'trial', 'active', 'past_due', 'canceled', 'blocked')
+    // 'past_due' entra: o servidor aplica a tolerância de 3 dias e bloqueia o chat depois disso.
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const { data: subscription } = await supabase
-          .from('subscriptions')
-          .select('status, plan_id')
-          .eq('account_id', user.id)
-          .maybeSingle();
+        const sub = await loadSubscription();
+        setSubscription(sub);
 
-        const hasAccess = subscription?.status === 'trial' || subscription?.status === 'active';
+        const hasAccess = sub?.status === 'trial' || sub?.status === 'active' || sub?.status === 'past_due';
 
         if (!hasAccess) {
           const pendingPlan = localStorage.getItem('pendingPlanChoice');
@@ -208,20 +193,56 @@ const App: React.FC = () => {
     
     setAppView('profile-select');
     setIsInitializing(false);
-  };
+  }, []);
+
+  // ── Inicialização de Sessão ────────────────
+  useEffect(() => {
+    // Verificar sessão atual
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) {
+        initUserData();
+      } else {
+        setAppView('landing');
+        setIsInitializing(false);
+      }
+    });
+
+    // Escutar mudanças de autenticação
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) {
+        initUserData();
+      } else {
+        // Sessão encerrada (logout, expiração ou outra aba): permite reinicializar no próximo login
+        hasInitializedRef.current = false;
+        setAppView('landing');
+        setIsInitializing(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [initUserData]);
 
   // ── Selecionar Perfil (Carregamento Assíncrono) 
   const handleSelectProfile = useCallback(async (profile: Profile) => {
     setIsDataLoading(true);
     setActiveProfile(profile);
     setActiveProfileId(profile.id);
+    setChatBlockReason(null);
 
     try {
       // Carrega dados do perfil selecionado do Supabase
-      const data = await loadFinancialData(profile.id);
-      const msgs = await loadChatHistory(profile.id);
-      const snaps = await loadMonthlySnapshots(profile.id);
+      const [data, msgs, snaps, sub] = await Promise.all([
+        loadFinancialData(profile.id),
+        loadChatHistory(profile.id),
+        loadMonthlySnapshots(profile.id),
+        loadSubscription(),
+      ]);
 
+      setSubscription(sub);
       setFinancialData(data);
       setBalance(data ? calculateFinancialBalance(data) : null);
       setSnapshots(snaps);
@@ -259,7 +280,7 @@ const App: React.FC = () => {
         setEditingProfile(null);
         showToast(`✅ Perfil "${savedProfile.name}" ${editingProfile ? 'atualizado' : 'criado'}!`);
       }
-    } catch (e) {
+    } catch {
       showToast('❌ Erro ao salvar perfil.');
     } finally {
       setIsDataLoading(false);
@@ -376,7 +397,17 @@ const App: React.FC = () => {
 
     try {
       const allMessages = [...messages, userMessage];
-      const response = await sendMessage(allMessages, financialData);
+      const response = await sendMessage(allMessages, financialData, activeProfile.id);
+
+      // Bloqueio de assinatura ou limite diário: mostra o aviso e a tela de upgrade
+      if (response.blocked) {
+        setChatBlockReason(response.blockReason ?? 'blocked');
+        setMessages((prev) => [
+          ...prev.filter((m) => m.id !== 'typing'),
+          { id: generateId(), role: 'assistant', content: response.content, timestamp: new Date() },
+        ]);
+        return;
+      }
 
       // Detecta resposta vazia ou incompleta — o modelo às vezes termina o turno
       // sem gerar conteúdo visível (false completion). Nesse caso, enviamos uma
@@ -394,8 +425,11 @@ const App: React.FC = () => {
           content: 'Por favor, continue com o próximo passo da análise.',
           timestamp: new Date(),
         }];
-        const retryResponse = await sendMessage(followUpMessages, financialData);
+        const retryResponse = await sendMessage(followUpMessages, financialData, activeProfile.id);
         finalContent = retryResponse.content || 'Desculpe, tive um problema ao gerar a resposta. Pode repetir sua última mensagem?';
+        if (retryResponse.blocked) {
+          setChatBlockReason(retryResponse.blockReason ?? 'blocked');
+        }
         // Aproveita dados financeiros do retry se existirem
         if (!response.financialData && retryResponse.financialData) {
           response.financialData = retryResponse.financialData;
@@ -475,6 +509,29 @@ const App: React.FC = () => {
     }
   }, [isLoadingChat, messages, financialData, activeProfile, showToast]);
 
+  // ── Upgrade / troca de plano ───────────────
+  const closeChangePlanModal = useCallback(() => setShowChangePlanModal(false), []);
+
+  const handleCheckoutRequiredPaid = useCallback(() => {
+    localStorage.removeItem('pendingPlanChoice');
+    hasInitializedRef.current = false;
+    initUserData();
+  }, [initUserData]);
+
+  const handleUpgradeClick = useCallback(() => {
+    setChangePlanTarget(subscription?.plan_id === 'basic' ? 'family' : 'basic');
+    setShowChangePlanModal(true);
+  }, [subscription]);
+
+  const handlePlanChanged = useCallback(async () => {
+    setShowChangePlanModal(false);
+    const sub = await loadSubscription();
+    setSubscription(sub);
+    if (sub?.status === 'active' || sub?.status === 'trial') {
+      setChatBlockReason(null);
+    }
+  }, []);
+
   // ── Limpar Conversa ────────────────────────
   const handleClearChat = useCallback(async () => {
     if (!activeProfile) return;
@@ -506,10 +563,11 @@ const App: React.FC = () => {
       // Os dados financeiros já são atualizados automaticamente a cada
       // mensagem do chat; esse botão serve apenas para forçar um recálculo
       // caso o painel lateral tenha ficado desatualizado por algum motivo.
-      financialData.lastUpdated = new Date().toISOString();
-      const newBalance = calculateFinancialBalance(financialData);
+      const updatedData: FinancialData = { ...financialData, lastUpdated: new Date().toISOString() };
+      setFinancialData(updatedData);
+      const newBalance = calculateFinancialBalance(updatedData);
       setBalance(newBalance);
-      await saveFinancialData(activeProfile.id, financialData);
+      await saveFinancialData(activeProfile.id, updatedData);
 
       const snapshot: MonthlySnapshot = {
         month: getCurrentMonthKey(),
@@ -601,6 +659,8 @@ const App: React.FC = () => {
     showToast('📄 Gerando PDF...');
 
     try {
+      // Carregado sob demanda: o jsPDF é pesado e só é usado na exportação
+      const { default: jsPDF } = await import('jspdf');
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
@@ -669,7 +729,7 @@ const App: React.FC = () => {
       pdf.text('ANALISTA FINANCEIRO IA', margin, 17);
       pdf.setFontSize(11);
       pdf.setFont('helvetica', 'normal');
-      pdf.text(`Relatório de ${activeProfile.avatar} ${financialData.userName || activeProfile.name}`, margin, 28);
+      pdf.text(`Relatório de ${financialData.userName || activeProfile.name}`, margin, 28);
       pdf.text(new Date().toLocaleDateString('pt-BR', { dateStyle: 'full' }), margin, 36);
       y = 50;
 
@@ -682,7 +742,6 @@ const App: React.FC = () => {
       addLine(`Parcelas de Dívidas: ${fmtCurrency(balance.totalDebtPayments)}`, 11);
       addLine(`Total de Saídas: ${fmtCurrency(balance.totalExpenses)}`, 11, false, [239, 68, 68]);
       
-      const { HEALTH_LEVELS } = await import('./types/financial');
       const health = HEALTH_LEVELS[balance.healthLevel];
       
       addLine(`SALDO MENSAL LÍQUIDO: ${fmtCurrency(balance.monthlyBalance)}`, 13, true,
@@ -712,7 +771,7 @@ const App: React.FC = () => {
       // 4. Análise de Saúde Financeira
       addLine('4. PARECER CRÍTICO E DIAGNÓSTICO', 14, true, [99, 102, 241], 4);
       addSep();
-      addLine(`Diagnóstico Atual: ${health.emoji} ${health.label}`, 12, true, 
+      addLine(`Diagnóstico Atual: ${health.label}`, 12, true, 
         balance.healthLevel === 'healthy' ? [16, 185, 129] : (balance.healthLevel === 'critical' ? [239, 68, 68] : [249, 115, 22]));
       addLine(health.description, 10.5, false, [100, 100, 100], 5);
       y += 1;
@@ -749,7 +808,7 @@ const App: React.FC = () => {
       if (balance.incomeCommitmentIndex >= 70) {
         negativos.push(`Renda Altamente Comprometida: Você gasta ${balance.incomeCommitmentIndex}% da renda fixa, reduzindo flexibilidade financeira.`);
       }
-      const varPct = (balance.totalVariableExpenses / balance.totalIncome) * 100;
+      const varPct = balance.totalIncome > 0 ? (balance.totalVariableExpenses / balance.totalIncome) * 100 : 0;
       if (varPct > 35) {
         negativos.push(`Gastos Supérfluos Elevados: Despesas variáveis consomem ${varPct.toFixed(0)}% da renda.`);
       }
@@ -855,14 +914,16 @@ const App: React.FC = () => {
   if (!session) {
     if (appView === 'landing') {
       return (
-        <LandingPage
-          onLoginClick={(planId) => {
-            if (planId) {
-              localStorage.setItem('pendingPlanChoice', planId);
-            }
-            setAppView('login');
-          }}
-        />
+        <Suspense fallback={lazyFallback}>
+          <LandingPage
+            onLoginClick={(planId) => {
+              if (planId) {
+                localStorage.setItem('pendingPlanChoice', planId);
+              }
+              setAppView('login');
+            }}
+          />
+        </Suspense>
       );
     }
     return <LoginScreen onLoginSuccess={() => {}} />;
@@ -882,16 +943,14 @@ const App: React.FC = () => {
   // e força a tela de pagamento — não deixa entrar em profile-select/main-app.
   if (appView === 'checkout-required') {
     return (
-      <CheckoutModal
-        isOpen={true}
-        initialPlanId={checkoutInitialPlan}
-        onClose={handleLogout}
-        onPaymentSuccess={() => {
-          localStorage.removeItem('pendingPlanChoice');
-          hasInitializedRef.current = false;
-          initUserData();
-        }}
-      />
+      <Suspense fallback={lazyFallback}>
+        <CheckoutModal
+          isOpen={true}
+          initialPlanId={checkoutInitialPlan}
+          onClose={handleLogout}
+          onPaymentSuccess={handleCheckoutRequiredPaid}
+        />
+      </Suspense>
     );
   }
 
@@ -940,22 +999,24 @@ const App: React.FC = () => {
 
       {/* Modal de troca de plano, aberto a partir das Configurações */}
       {showChangePlanModal && (
-        <CheckoutModal
-          isOpen={true}
-          initialPlanId={changePlanTarget}
-          onClose={() => setShowChangePlanModal(false)}
-          onPaymentSuccess={() => {
-            setShowChangePlanModal(false);
-          }}
-        />
+        <Suspense fallback={null}>
+          <CheckoutModal
+            isOpen={true}
+            initialPlanId={changePlanTarget}
+            onClose={closeChangePlanModal}
+            onPaymentSuccess={handlePlanChanged}
+          />
+        </Suspense>
       )}
 
       {/* Visão Familiar */}
       {appView === 'family-view' && (
-        <FamilyViewPanel
-          profiles={profiles}
-          onClose={() => setAppView('profile-select')}
-        />
+        <Suspense fallback={null}>
+          <FamilyViewPanel
+            profiles={profiles}
+            onClose={() => setAppView('profile-select')}
+          />
+        </Suspense>
       )}
 
       {/* ── TELA DE SELEÇÃO DE PERFIS ── */}
@@ -1057,12 +1118,19 @@ const App: React.FC = () => {
               isLoading={isLoadingChat}
               onClearChat={handleClearChat}
               onResetData={handleResetProfileData}
+              isBlocked={!!chatBlockReason}
+              blockReason={chatBlockReason}
+              planName={subscription?.plans?.name}
+              messageLimit={subscription?.plans?.max_messages_post_report}
+              onUpgradeClick={handleUpgradeClick}
               className={isMobile && mobileTab !== 'chat' ? 'mobile-hidden' : ''}
             />
             <SidePanel
               financialData={financialData}
               balance={balance}
               snapshots={snapshots}
+              subscription={subscription}
+              onUpgradeClick={handleUpgradeClick}
               onExportPDF={handleExportPDF}
               onResetData={handleResetProfileData}
               onSyncData={handleSyncData}

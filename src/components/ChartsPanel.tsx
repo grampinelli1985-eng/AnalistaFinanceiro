@@ -13,6 +13,7 @@ import {
   PointElement,
   LineElement,
   Filler,
+  type TooltipItem,
 } from 'chart.js';
 import { Doughnut, Line } from 'react-chartjs-2';
 import type { FinancialData, FinancialBalance, MonthlySnapshot } from '../types/financial';
@@ -115,8 +116,8 @@ const ChartsPanel: React.FC<ChartsPanelProps> = ({ financialData, balance, snaps
       tooltip: {
         ...darkTooltip,
         callbacks: {
-          label: (ctx: any) => {
-            const total = ctx.dataset.data.reduce((a: number, b: number) => a + b, 0);
+          label: (ctx: TooltipItem<'doughnut'>) => {
+            const total = (ctx.dataset.data as number[]).reduce((a, b) => a + b, 0);
             const pct = ((ctx.parsed / total) * 100).toFixed(1);
             return ` ${formatCurrency(ctx.parsed)} (${pct}%)`;
           },
@@ -169,7 +170,7 @@ const ChartsPanel: React.FC<ChartsPanelProps> = ({ financialData, balance, snaps
         ticks: {
           color: '#64748b',
           font: { size: 10, family: 'Inter' },
-          callback: (value: any) => `R$ ${(value / 1000).toFixed(0)}k`,
+          callback: (value: string | number) => `R$ ${(Number(value) / 1000).toFixed(0)}k`,
         },
       },
     },
@@ -178,7 +179,7 @@ const ChartsPanel: React.FC<ChartsPanelProps> = ({ financialData, balance, snaps
       tooltip: {
         ...darkTooltip,
         callbacks: {
-          label: (ctx: any) => ` ${formatCurrency(ctx.parsed.y)}`,
+          label: (ctx: TooltipItem<'line'>) => ` ${formatCurrency(ctx.parsed.y ?? 0)}`,
         },
       },
     },

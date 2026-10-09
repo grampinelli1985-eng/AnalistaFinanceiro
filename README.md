@@ -1,73 +1,46 @@
-# React + TypeScript + Vite
+# Analista Financeiro IA
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Assistente de organização financeira pessoal: o usuário conversa com um analista (Google Gemini), que monta o balanço, o diagnóstico e um plano de ação. Os dados ficam no Supabase e as assinaturas são cobradas pelo Asaas.
 
-Currently, two official plugins are available:
+## Arquitetura
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+| Camada | Tecnologia | Onde |
+|---|---|---|
+| Frontend | React 19 + Vite + TypeScript | `src/` |
+| API (Vercel Functions) | TypeScript | `api/` (utilitários compartilhados em `api/_lib/`, que não viram rotas) |
+| Banco e login | Supabase (Postgres + Auth + RLS) | `api/schema.sql`, `supabase/migrations/` |
+| IA | Google Gemini API | chamada só pelo servidor (`api/chat.ts`, `api/process-document.ts`) |
+| Pagamentos | Asaas | `api/checkout.ts`, `api/webhook-asaas.ts`, `api/cancel-subscription.ts` |
 
-## React Compiler
+### Rotas da API
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| Rota | Autenticação | Função |
+|---|---|---|
+| `POST /api/chat` | Login (JWT do Supabase) | Conversa com o analista. Verifica dono do perfil, assinatura, limite diário e rate limit |
+| `POST /api/process-document` | Login | Extrai dados de fatura/extrato em PDF (até 3MB) |
+| `POST /api/checkout` | Login | Cria a cobrança recorrente no Asaas |
+| `POST /api/cancel-subscription` | Login | Cancela a assinatura (Asaas + banco) |
+| `POST /api/delete-account` | Login | Exclusão definitiva da conta (LGPD) |
+| `POST /api/webhook-asaas` | Token do Asaas + conferência na API do Asaas | Ativa, rebaixa ou cancela assinaturas |
+| `GET /api/beta-slots` | Pública | Vagas ocupadas do programa beta |
 
-## Expanding the ESLint configuration
+## Desenvolvimento
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev      # frontend em http://localhost:5173
+npm test         # testes (Vitest)
+npm run lint     # ESLint
+npm run build    # checagem de tipos (app + api) e build de produção
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+As rotas de `api/` rodam na Vercel. Para testá-las localmente, use `vercel dev` com as variáveis de ambiente configuradas.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Variáveis de ambiente, banco de dados e webhook: veja [VERCEL_DEPLOY.md](./VERCEL_DEPLOY.md).
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## Regras de negócio importantes
+
+- **Acesso ao chat**: trial (90 dias) e `active` liberam; `past_due` tem 3 dias de tolerância; `canceled` e `blocked` bloqueiam.
+- **Limite diário**: começa a contar depois que o primeiro balanço do perfil é gerado (`profiles.report_generated_at`, marcado pelo servidor).
+- **Plano pago**: só é aplicado quando o webhook confirma o pagamento na API do Asaas. O plano escolhido viaja no `externalReference` da assinatura do Asaas (`<id da assinatura>|<plano>`).
+- **Cálculos**: todo o balanço é calculado no frontend (`src/utils/financialCalculations.ts`); a IA só preenche o JSON com os valores informados.

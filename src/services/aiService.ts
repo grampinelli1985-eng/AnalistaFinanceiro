@@ -2,7 +2,7 @@
 // SERVIÇO DE INTEGRAÇÃO — GEMINI API
 // ==========================================
 // O modelo e o system prompt completo vivem no backend (api/chat.ts),
-// que roda como Edge Function no Vercel e usa GEMINI_API_KEY do servidor.
+// que roda como Vercel Function e usa GEMINI_API_KEY do servidor.
 // Esse arquivo só cuida da comunicação entre o frontend e essa rota.
 // ==========================================
 
@@ -13,33 +13,42 @@ import type { Message, FinancialData } from '../types/financial';
 // FUNÇÃO PRINCIPAL DE CHAT
 // ──────────────────────────────────────────
 
+export type ChatBlockReason = 'limit_reached' | 'expired' | 'blocked' | 'past_due_expired' | 'canceled';
+
 export interface AIResponse {
   content: string;
   financialData: string | null;
   blocked?: boolean;
-  blockReason?: 'limit_reached' | 'expired' | 'blocked' | 'past_due_expired' | null;
+  blockReason?: ChatBlockReason | null;
   messagesRemainingToday?: number | null;
 }
 
+// Mesmo limite aplicado no backend; enviar menos reduz o tamanho da requisição.
+const MAX_HISTORY_MESSAGES = 40;
+
 export async function sendMessage(
   messages: Message[],
-  financialData?: FinancialData | null,
-  profileId?: string
+  financialData: FinancialData | null | undefined,
+  profileId: string
 ): Promise<AIResponse> {
   const { data: { session } } = await supabase.auth.getSession();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-  
-  if (session?.access_token) {
-    headers['Authorization'] = `Bearer ${session.access_token}`;
+  if (!session?.access_token) {
+    throw new Error('Sessão expirada. Faça login novamente.');
   }
+
+  const recentMessages = messages
+    .filter((m) => !m.isTyping && m.content.trim())
+    .slice(-MAX_HISTORY_MESSAGES)
+    .map(({ role, content }) => ({ role, content }));
 
   // Chamada exclusiva para a Rota de API Serverless do Vercel
   const response = await fetch('/api/chat', {
     method: 'POST',
-    headers,
-    body: JSON.stringify({ messages, financialData, profileId }),
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ messages: recentMessages, financialData, profileId }),
   });
 
   if (response.ok) {

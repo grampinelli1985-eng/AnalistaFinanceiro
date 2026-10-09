@@ -6,8 +6,11 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import type { Message, MessageAttachment } from '../types/financial';
 import MessageBubble from './MessageBubble';
 import UpgradeOverlay from './UpgradeOverlay';
+import { supabase } from '../lib/supabase';
+import type { ChatBlockReason } from '../services/aiService';
 
-const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+// O corpo das Vercel Functions é limitado a 4,5MB e o base64 aumenta o arquivo em ~33%.
+const MAX_FILE_SIZE_BYTES = 3 * 1024 * 1024; // 3MB
 
 interface ChatPanelProps {
   messages: Message[];
@@ -17,9 +20,10 @@ interface ChatPanelProps {
   onResetData: () => void;
   className?: string;
   isBlocked?: boolean;
-  blockReason?: 'limit_reached' | 'expired' | 'blocked' | 'past_due_expired' | null;
+  blockReason?: ChatBlockReason | null;
   onUpgradeClick?: () => void;
   planName?: string;
+  messageLimit?: number;
 }
 
 const ChatPanel: React.FC<ChatPanelProps> = ({
@@ -33,6 +37,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   blockReason = null,
   onUpgradeClick,
   planName = 'BETA',
+  messageLimit = 20,
 }) => {
   const [inputValue, setInputValue] = useState('');
   const [pendingAttachment, setPendingAttachment] = useState<MessageAttachment | null>(null);
@@ -67,7 +72,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
       return;
     }
     if (file.size > MAX_FILE_SIZE_BYTES) {
-      setAttachmentError('O arquivo deve ter no máximo 5MB.');
+      setAttachmentError('O arquivo deve ter no máximo 3MB.');
       return;
     }
 
@@ -99,9 +104,16 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
       setIsProcessingDocument(true);
       setAttachmentError('');
       try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) {
+          throw new Error('Sessão expirada. Faça login novamente.');
+        }
         const response = await fetch('/api/process-document', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
           body: JSON.stringify({
             mimeType: pendingAttachment.mimeType,
             data: pendingAttachment.data,
@@ -132,8 +144,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
         if (textareaRef.current) {
           textareaRef.current.style.height = 'auto';
         }
-      } catch (err: any) {
-        setAttachmentError(err.message || 'Erro ao processar o documento. Tente novamente.');
+      } catch (err) {
+        setAttachmentError((err instanceof Error ? err.message : '') || 'Erro ao processar o documento. Tente novamente.');
       } finally {
         setIsProcessingDocument(false);
       }
@@ -178,7 +190,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
         <div style={{ padding: 'var(--space-md) var(--space-lg)' }}>
           <UpgradeOverlay
             reason={blockReason}
-            limit={planName === 'Beta Trial' ? 20 : planName === 'Plano Basic' ? 40 : 100}
+            limit={messageLimit}
             onUpgradeClick={onUpgradeClick || (() => {})}
             planName={planName}
           />

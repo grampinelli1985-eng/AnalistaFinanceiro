@@ -20,9 +20,11 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   
   // Checkout API responses
-  const [pixData, setPixData] = useState<{ qrCode: string; qrCodeImage: string; copiaECola: string; subscriptionId: string } | null>(null);
-  const [boletoData, setBoletoData] = useState<{ barcode: string; dueDate: string; bankSlipUrl?: string; subscriptionId: string } | null>(null);
+  // `simulated` só vem do servidor quando ASAAS_MOCK=true (nunca em produção)
+  const [pixData, setPixData] = useState<{ qrCode: string; qrCodeImage: string; copiaECola: string; subscriptionId: string; simulated?: boolean } | null>(null);
+  const [boletoData, setBoletoData] = useState<{ barcode: string; dueDate: string; bankSlipUrl?: string; subscriptionId: string; simulated?: boolean } | null>(null);
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
+  const [awaitingCardConfirmation, setAwaitingCardConfirmation] = useState(false);
 
   // Credit Card Form
   const [holderName, setHolderName] = useState('');
@@ -35,17 +37,35 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [addressNumber, setAddressNumber] = useState('');
   const [installments, setInstallments] = useState(1);
 
-  // Reset state on open/close
+  // Enquanto o pagamento está pendente, consulta a assinatura até o webhook
+  // do Asaas confirmar (status 'active' com o plano escolhido).
+  const isAwaitingPayment = !!pixData || !!boletoData || awaitingCardConfirmation;
   useEffect(() => {
-    if (isOpen) {
-      setPlanId(initialPlanId);
-      setPaymentMethod('pix');
-      setPixData(null);
-      setBoletoData(null);
-      setCheckoutSuccess(false);
-      setError(null);
-    }
-  }, [isOpen, initialPlanId]);
+    if (!isOpen || !isAwaitingPayment || checkoutSuccess) return;
+
+    let cancelled = false;
+    const check = async () => {
+      const { data } = await supabase
+        .from('subscriptions')
+        .select('status, plan_id')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!cancelled && data?.status === 'active' && data.plan_id === planId) {
+        setCheckoutSuccess(true);
+        setTimeout(() => {
+          onPaymentSuccess();
+          onClose();
+        }, 2000);
+      }
+    };
+
+    const interval = setInterval(check, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isOpen, isAwaitingPayment, checkoutSuccess, planId, onPaymentSuccess, onClose]);
 
   if (!isOpen) return null;
 
@@ -63,7 +83,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
         throw new Error('Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.');
       }
 
-      const payload: any = {
+      const payload: Record<string, unknown> = {
         planId,
         method: paymentMethod,
         cpfCnpj: cpf.replace(/\D/g, ''),
@@ -101,15 +121,20 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
       } else if (paymentMethod === 'boleto') {
         setBoletoData(data);
       } else if (paymentMethod === 'cartao') {
-        setCheckoutSuccess(true);
-        setTimeout(() => {
-          onPaymentSuccess();
-          onClose();
-        }, 2000);
+        if (data.simulated) {
+          setCheckoutSuccess(true);
+          setTimeout(() => {
+            onPaymentSuccess();
+            onClose();
+          }, 2000);
+        } else {
+          // A liberação acontece quando o webhook confirmar a cobrança
+          setAwaitingCardConfirmation(true);
+        }
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setError(err.message || 'Ocorreu um erro.');
+      setError((err instanceof Error ? err.message : '') || 'Ocorreu um erro.');
     } finally {
       setIsLoading(false);
     }
@@ -142,8 +167,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
         const err = await res.json();
         throw new Error(err.error || 'Erro na simulação do webhook');
       }
-    } catch (err: any) {
-      setError('Erro ao simular webhook: ' + err.message);
+    } catch (err) {
+      setError('Erro ao simular webhook: ' + (err instanceof Error ? err.message : ''));
     } finally {
       setIsLoading(false);
     }
@@ -179,7 +204,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
           <div style={{ padding: 'var(--space-xl)', maxHeight: '75vh', overflowY: 'auto' }}>
             
             {/* Escolha do Plano */}
-            {!pixData && !boletoData && (
+            {!pixData && !boletoData && !awaitingCardConfirmation && (
               <div style={{ marginBottom: 'var(--space-lg)' }}>
                 <label className="modal-label" style={{ marginBottom: '8px' }}>Selecione seu Plano:</label>
                 <div style={{ display: 'flex', gap: '12px' }}>
@@ -210,7 +235,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
             )}
 
             {/* Sumário do Pedido */}
-            {!pixData && !boletoData && (
+            {!pixData && !boletoData && !awaitingCardConfirmation && (
               <div style={{ padding: '12px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--color-border)', marginBottom: 'var(--space-lg)', fontSize: '0.875rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                   <span>Assinatura Anual: <strong>{plan.name}</strong></span>
@@ -239,17 +264,22 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     📋 Copiar Código Pix
                   </button>
                 </div>
-                <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-lg)' }}>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', marginBottom: '8px' }}>Ambiente de testes: simule o recebimento da transação instantaneamente</p>
-                  <button 
-                    onClick={() => handleSimulatePaymentWebhook(pixData.subscriptionId, 'pix')}
-                    className="btn btn-primary"
-                    disabled={isLoading}
-                    style={{ background: 'var(--color-green)', border: 'none', color: '#fff', width: '100%', maxWidth: '280px' }}
-                  >
-                    {isLoading ? 'Confirmando...' : '⚡ Simular Pagamento Pix'}
-                  </button>
-                </div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                  ⏳ Aguardando a confirmação do pagamento — esta tela é atualizada automaticamente.
+                </p>
+                {pixData.simulated && (
+                  <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-lg)' }}>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', marginBottom: '8px' }}>Ambiente de testes: simule o recebimento da transação instantaneamente</p>
+                    <button
+                      onClick={() => handleSimulatePaymentWebhook(pixData.subscriptionId, 'pix')}
+                      className="btn btn-primary"
+                      disabled={isLoading}
+                      style={{ background: 'var(--color-green)', border: 'none', color: '#fff', width: '100%', maxWidth: '280px' }}
+                    >
+                      {isLoading ? 'Confirmando...' : '⚡ Simular Pagamento Pix'}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -275,22 +305,38 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     </a>
                   )}
                 </div>
-                <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-lg)' }}>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', marginBottom: '8px' }}>Ambiente de testes: simule a compensação do boleto imediatamente</p>
-                  <button 
-                    onClick={() => handleSimulatePaymentWebhook(boletoData.subscriptionId, 'boleto')}
-                    className="btn btn-primary"
-                    disabled={isLoading}
-                    style={{ background: 'var(--color-green)', border: 'none', color: '#fff', width: '100%', maxWidth: '280px' }}
-                  >
-                    {isLoading ? 'Compensando...' : '⚡ Simular Compensação Boleto'}
-                  </button>
-                </div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                  O boleto pode levar até 3 dias úteis para compensar. Seu plano é liberado automaticamente após a confirmação.
+                </p>
+                {boletoData.simulated && (
+                  <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-lg)' }}>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', marginBottom: '8px' }}>Ambiente de testes: simule a compensação do boleto imediatamente</p>
+                    <button
+                      onClick={() => handleSimulatePaymentWebhook(boletoData.subscriptionId, 'boleto')}
+                      className="btn btn-primary"
+                      disabled={isLoading}
+                      style={{ background: 'var(--color-green)', border: 'none', color: '#fff', width: '100%', maxWidth: '280px' }}
+                    >
+                      {isLoading ? 'Compensando...' : '⚡ Simular Compensação Boleto'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Cartão enviado, aguardando confirmação da operadora */}
+            {awaitingCardConfirmation && (
+              <div style={{ textAlign: 'center', padding: '12px 0' }}>
+                <div style={{ fontSize: '2rem', marginBottom: '8px' }}>⏳</div>
+                <h3 style={{ marginBottom: '8px' }}>Processando pagamento</h3>
+                <p style={{ fontSize: '0.9rem', color: 'var(--color-text-secondary)' }}>
+                  Estamos aguardando a confirmação da operadora do cartão. Esta tela é atualizada automaticamente.
+                </p>
               </div>
             )}
 
             {/* Seleção do Método (caso não gerado ainda) */}
-            {!pixData && !boletoData && (
+            {!pixData && !boletoData && !awaitingCardConfirmation && (
               <form onSubmit={handleInitializeCheckout}>
                 <div style={{ marginBottom: 'var(--space-lg)' }}>
                   <label className="modal-label" style={{ marginBottom: '8px' }}>CPF ou CNPJ do Cliente:</label>

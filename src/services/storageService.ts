@@ -13,6 +13,9 @@ import type {
   FamilyViewConfig,
 } from '../types/financial';
 
+// Mensagem como fica salva em JSON (timestamp vira string)
+type StoredMessage = Omit<Message, 'timestamp'> & { timestamp: string };
+
 // ── Obter Sessão Atual ────────────────────
 async function getUserId(): Promise<string | null> {
   const { data: { session } } = await supabase.auth.getSession();
@@ -48,7 +51,6 @@ export async function saveProfile(profile: Partial<Profile> & { id?: string }): 
   if (!userId) return null;
 
   const payload = {
-    account_id: userId,
     name: profile.name,
     avatar: profile.avatar,
     color: profile.color,
@@ -81,7 +83,7 @@ export async function saveProfile(profile: Partial<Profile> & { id?: string }): 
     // Insert
     const { data, error } = await supabase
       .from('profiles')
-      .insert([payload])
+      .insert([{ ...payload, account_id: userId }])
       .select()
       .single();
 
@@ -173,7 +175,7 @@ export async function loadChatHistory(profileId: string): Promise<Message[]> {
   if (error || !data || !data.messages) return [];
 
   // Converte string de data de volta para objeto Date
-  return (data.messages as any[]).map((m: any) => ({
+  return (data.messages as StoredMessage[]).map((m) => ({
     ...m,
     timestamp: new Date(m.timestamp),
   }));
@@ -338,7 +340,7 @@ export async function migrateLocalDataToSupabase(): Promise<boolean> {
       // 3. Migrar Histórico de Chat
       const chatStr = localStorage.getItem(`af_profile_${oldId}_chat_history`);
       if (chatStr) {
-        const chat = JSON.parse(chatStr).map((m: any) => ({
+        const chat = JSON.parse(chatStr).map((m: StoredMessage) => ({
           ...m,
           timestamp: new Date(m.timestamp),
         }));
@@ -396,7 +398,7 @@ export async function recoverOrphanedData(): Promise<void> {
       if (finDataStr) await saveFinancialData(newProfile.id, JSON.parse(finDataStr));
 
       const chatStr = localStorage.getItem(`af_profile_${oldId}_chat_history`);
-      if (chatStr) await saveChatHistory(newProfile.id, JSON.parse(chatStr).map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) })));
+      if (chatStr) await saveChatHistory(newProfile.id, JSON.parse(chatStr).map((m: StoredMessage) => ({ ...m, timestamp: new Date(m.timestamp) })));
 
       const snapsStr = localStorage.getItem(`af_profile_${oldId}_monthly_snapshots`);
       if (snapsStr) {
@@ -414,7 +416,7 @@ export async function recoverOrphanedData(): Promise<void> {
 
 // ── Funções de Privacidade LGPD ──────────────────
 
-export async function exportAllUserData(): Promise<any> {
+export async function exportAllUserData(): Promise<Record<string, unknown> | null> {
   const userId = await getUserId();
   if (!userId) return null;
 
@@ -445,30 +447,27 @@ export async function exportAllUserData(): Promise<any> {
   };
 }
 
+/**
+ * Exclui a conta inteira (dados, cobrança recorrente e o usuário do Auth).
+ * Feito no servidor (/api/delete-account), que tem a service role.
+ */
 export async function deleteAllUserData(): Promise<boolean> {
-  const userId = await getUserId();
-  if (!userId) return false;
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) return false;
 
   try {
-    const profilesList = await loadProfiles();
-    const profileIds = profilesList.map(p => p.id);
-
-    if (profileIds.length > 0) {
-      // Deletar dados filhos
-      await supabase.from('financial_data').delete().in('profile_id', profileIds);
-      await supabase.from('chat_history').delete().in('profile_id', profileIds);
-      await supabase.from('monthly_snapshots').delete().in('profile_id', profileIds);
-
-      // Deletar perfis
-      await supabase.from('profiles').delete().in('id', profileIds);
+    const res = await fetch('/api/delete-account', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      console.error('Erro ao excluir conta:', body.error || res.status);
+      return false;
     }
-
-    // Deletar configurações da visão familiar
-    await supabase.from('family_view_config').delete().eq('account_id', userId);
-
     return true;
   } catch (err) {
-    console.error('Erro ao deletar dados do usuário:', err);
+    console.error('Erro ao excluir conta:', err);
     return false;
   }
 }
@@ -495,6 +494,8 @@ export async function loadSubscription(): Promise<SubscriptionData | null> {
   const { data, error } = await supabase
     .from('subscriptions')
     .select('*, plans:plans(*)')
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (error) {
@@ -518,22 +519,6 @@ export async function loadMessageUsageToday(): Promise<number> {
 
   if (error || !data) return 0;
   return data.message_count;
-}
-
-export async function markReportGenerated(profileId: string): Promise<string | null> {
-  const now = new Date().toISOString();
-  const { data, error } = await supabase
-    .from('profiles')
-    .update({ report_generated_at: now })
-    .eq('id', profileId)
-    .select('report_generated_at')
-    .single();
-
-  if (error) {
-    console.error('Erro ao marcar relatório como gerado:', error);
-    return null;
-  }
-  return data.report_generated_at;
 }
 
 
